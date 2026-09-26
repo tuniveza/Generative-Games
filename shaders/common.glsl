@@ -4,6 +4,9 @@
 #define MAX_LIGHTS 32
 #define PI 3.14159265359
 #define FLOOR_Y -0.5
+/* landmarks beyond the ruins; must match world.h */
+#define VOLCANO_XZ vec2(230.0, -230.0)
+#define VOLCANO_R 140.0
 
 layout(std140, binding = 0) uniform Frame {
     mat4 u_view_proj;
@@ -19,12 +22,50 @@ layout(std140, binding = 0) uniform Frame {
     vec4 u_zenith;              /* sky color straight up */
     vec4 u_weather;             /* x = wetness, y = cloud cover, z = lightning flash, w = rain */
     vec4 u_cover_grid;          /* x0, z0, 1 / cell size, 1 = grid present */
+    vec4 u_sea;                 /* x = sea level, y = camera underwater, z = volcanic ash, w = in the undersea palace */
+    vec4 u_height_grid;         /* terrain heights: x0, z0, 1 / spacing, samples per side */
     vec4 u_light_pos[MAX_LIGHTS];     /* xyz, w = radius */
     vec4 u_light_color[MAX_LIGHTS];   /* rgb intensity */
 };
 
 layout(binding = 8) uniform sampler2DShadow u_shadow_map;
 layout(binding = 10) uniform sampler2D u_cover;     /* height of whatever is overhead */
+layout(binding = 11) uniform sampler2D u_heights;   /* the terrain's height */
+
+/* ground height under (x, z), from the terrain's height texture */
+float terrain_height_at(vec2 xz)
+{
+    if (u_height_grid.w < 1.0)
+        return 0.0;
+    vec2 g = (xz - u_height_grid.xy) * u_height_grid.z;
+    return texture(u_heights, (g + 0.5) / u_height_grid.w).r;
+}
+
+/* how far under the open sea a point is (0 on land, in the crypt, above the waves) */
+float sea_depth(vec3 p)
+{
+    if (terrain_height_at(p.xz) > u_sea.x + 0.3)
+        return 0.0;
+    return max(u_sea.x - p.y, 0.0);
+}
+
+/* the dancing light net that sunlight makes on the sea floor (after joltz0r's
+ * "water turbulence") */
+float caustics(vec2 p, float t)
+{
+    vec2 q = mod(p * 0.9, 6.28318) - 250.0;
+    vec2 i = q;
+    float c = 1.0;
+    const float inten = 0.005;
+    for (int n = 0; n < 4; n++) {
+        float tt = t * (1.0 - 3.5 / float(n + 1));
+        i = q + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+        c += 1.0 / length(vec2(q.x / (sin(i.x + tt) / inten), q.y / (cos(i.y + tt) / inten)));
+    }
+    c /= 4.0;
+    c = 1.17 - pow(c, 1.4);
+    return clamp(pow(abs(c), 8.0), 0.0, 2.0);
+}
 
 /* 1 = open sky above this point, 0 = under a roof, a floor, or underground.
  * level_sky_exposure (level.c) is the same test on the CPU */
@@ -35,6 +76,9 @@ float sky_exposure(vec3 world_pos, vec3 n)
     /* look a little outward so wall faces check the open air in front of them */
     vec3 p = world_pos + vec3(n.x, 0.0, n.z) * 0.45;
     vec2 uv = (p.xz - u_cover_grid.xy) * u_cover_grid.z + 0.5;
+    ivec2 size = textureSize(u_cover, 0);
+    if (uv.x < 0.0 || uv.y < 0.0 || uv.x >= float(size.x) || uv.y >= float(size.y))
+        return 1.0;         /* beyond the world's edge: open sky */
     float top = texelFetch(u_cover, ivec2(uv), 0).r;
     float open = smoothstep(0.35, 0.05, top - world_pos.y);
     /* deep underground, even the stairwell light fades */
@@ -207,16 +251,44 @@ vec3 shade(vec3 albedo, float metallic, float roughness, float ao, vec3 n, vec3 
     float smooth_ = (1.0 - roughness) * (1.0 - roughness);
     color += sky_color(r) * f_amb * smooth_ * mix(0.15, 1.0, exposure) * ao;
 
+    /* under the sea: the water drinks the red first, and the sun draws moving nets of
+     * light on whatever faces up */
+    float depth = sea_depth(world_pos);
+    if (depth > 0.0) {
+        vec3 absorb = exp(-depth * vec3(0.16, 0.045, 0.035) * (1.0 - 0.75 * u_sea.w));
+        float lit = max(n.y, 0.0) * sun_shadow(world_pos, n) * exposure;
+        vec3 net = u_sun_color.rgb * albedo * caustics(world_pos.xz * 0.35, u_misc.x * 0.6) * lit * 0.35;
+        color = color * absorb + net * exp(-depth * 0.05);
+        /* the Drowned Court glows softly in its own right, as if the sea itself were lit */
+        color += albedo * vec3(0.1, 0.3, 0.32) * u_sea.w * ao * (0.8 + 0.2 * n.y);
+    }
     return color;
 }
 
 /* distance haze towards the fog color; much thinner under a roof, where the rain's
  * mist doesn't reach */
+/* the green-blue murk you see through when under the sea (also the sky's color there) */
+vec3 sea_murk()
+{
+    float depth = max(u_sea.x - u_camera_pos.y, 0.0);
+    vec3 light = u_sun_color.rgb * 0.05 + u_sky_color.rgb * 0.5 + 0.02;
+    return vec3(0.05, 0.3, 0.33) * light * exp(-depth * vec3(0.12, 0.04, 0.03)) + vec3(0.01, 0.07, 0.09) * u_sea.w;
+}
+
 vec3 apply_fog(vec3 color, vec3 world_pos)
 {
+    float dist = length(u_camera_pos.xyz - world_pos);
+    if (u_sea.y > 0.5) {
+        /* under water (or in the palace's air, which is still deep in it) */
+        float density = mix(0.055, 0.02, u_sea.w);
+        return mix(color, sea_murk(), 1.0 - exp(-dist * density));
+    }
     float inside = 1.0 - u_misc.z;     /* sky_exposure at the camera, worked out once on the CPU */
-    float d = length(u_camera_pos.xyz - world_pos) * u_fog.a * mix(1.0, 0.25, inside);
-    /* underground there's no sky haze, just darkness */
-    vec3 fog = world_pos.y < FLOOR_Y - 1.0 ? vec3(0.004, 0.004, 0.006) : u_fog.rgb;
+    /* haze hangs low: tall things far off (the volcano) stand out against the sky */
+    float high = smoothstep(8.0, 110.0, world_pos.y);
+    float d = dist * u_fog.a * mix(1.0, 0.25, inside) * mix(1.0, 0.45, high);
+    /* underground (the crypt, under the land) there's no sky haze, just darkness */
+    bool buried = world_pos.y < FLOOR_Y - 1.0 && terrain_height_at(world_pos.xz) > world_pos.y + 0.5;
+    vec3 fog = buried ? vec3(0.004, 0.004, 0.006) : u_fog.rgb;
     return mix(color, fog, 1.0 - exp(-d * d));
 }

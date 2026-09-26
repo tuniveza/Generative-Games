@@ -1,6 +1,8 @@
 #include "hands.h"
 #include "meshgen.h"
 
+#include <math.h>
+
 #include <string.h>
 
 /* hand space: wrist at the origin, fingers along -Z, palm facing -X (inwards for
@@ -306,7 +308,7 @@ void hands_update(Hands *h, const HandInput *in, mat4 inv_view, float dt)
     bool fist = in->held == ITEM_NONE;
     bool weapon = in->held != ITEM_NONE && !spell &&
                   (ITEMS[in->held].kind == KIND_WEAPON || ITEMS[in->held].kind == KIND_THROWN ||
-                   in->held == ITEM_TORCH);
+                   ITEMS[in->held].kind == KIND_ROD || in->held == ITEM_TORCH);
     Placement rp = { { 0.18f, -0.165f, -0.36f }, { 0.15f, 0.12f, 0.0f } };
     if (fist)
         glm_vec3_copy((vec3){0.17f, -0.19f, -0.34f}, rp.pos);
@@ -319,8 +321,21 @@ void hands_update(Hands *h, const HandInput *in, mat4 inv_view, float dt)
         glm_vec3_copy((vec3){0.15f, -0.17f, -0.34f}, rp.pos);
         glm_vec3_copy((vec3){0.1f, 0.3f, 1.2f}, rp.rot);
     }
-    if (in->held == ITEM_SHIELD)
-        glm_vec3_copy((vec3){0.18f, -0.26f, -0.38f}, rp.pos);
+    bool rod = in->held != ITEM_NONE && ITEMS[in->held].kind == KIND_ROD;
+    if (rod) {
+        /* the rod held out low and forward, its tip up in front of you */
+        glm_vec3_copy((vec3){0.16f, -0.24f, -0.4f}, rp.pos);
+        glm_vec3_copy((vec3){0.55f, 0.1f, 0.0f}, rp.rot);
+        if (in->fishing == 4)           /* reeling: the rod bucks */
+            rp.rot[0] += sinf(h->time * 23.0f) * 0.05f;
+        if (in->fishing == 3)           /* a bite! */
+            rp.rot[0] -= 0.1f;
+    }
+    if (in->held == ITEM_GAS_MASK && !in->mask_on) {
+        /* held up by its rim, the lenses toward you, the hose hanging down */
+        glm_vec3_copy((vec3){0.14f, -0.12f, -0.4f}, rp.pos);
+        glm_vec3_copy((vec3){0.05f, 0.25f, 0.2f}, rp.rot);
+    }
 
     Placement off = {0};
     if (in->action == ACT_SWING)
@@ -331,16 +346,21 @@ void hands_update(Hands *h, const HandInput *in, mat4 inv_view, float dt)
         sample_keys(THROW_KEYS, 4, in->action_t, &off);
     else if (in->action == ACT_CAST)
         sample_keys(CAST_KEYS, 4, in->action_t, &off);
-    else if (in->action == ACT_BLOCK) {
-        /* shield up across the body, or binoculars to the eyes */
-        if (in->held == ITEM_SHIELD)
-            off = (Placement){ { -0.16f, 0.12f, 0.05f }, { 0.1f, 0.9f, 0.0f } };
-        else
-            off = (Placement){ { -0.17f, 0.2f, 0.18f }, { 0.0f, 0.1f, -1.2f } };
+    else if (in->action == ACT_BLOCK && (in->held == ITEM_BINOCULARS || in->held == ITEM_MAGNIFIER)) {
+        /* binoculars (or the magnifying glass) up to the eyes */
+        off = (Placement){ { -0.17f, 0.2f, 0.18f }, { 0.0f, 0.1f, -1.2f } };
     }
     glm_vec3_add(rp.pos, off.pos, rp.pos);
     glm_vec3_add(rp.rot, off.rot, rp.rot);
     glm_vec3_add(rp.pos, common, rp.pos);
+
+    /* swimming: both arms reach forward and sweep back, over and over */
+    float stroke = in->swimming ? in->swim_phase * 2.0f : 0.0f;
+    if (in->swimming) {
+        float reach = sinf(stroke) * 0.5f + 0.5f;
+        rp = (Placement){ { 0.1f + (1.0f - reach) * 0.16f, -0.2f + reach * 0.06f, -0.52f + (1.0f - reach) * 0.2f },
+                          { 0.2f, -0.3f + (1.0f - reach) * 0.7f, 1.2f } };
+    }
 
     float target[5];
     float c = fist ? (in->action == ACT_SWING ? 1.0f : 0.7f) : weapon ? 0.95f : spell ? 0.12f : 0.5f;
@@ -363,6 +383,26 @@ void hands_update(Hands *h, const HandInput *in, mat4 inv_view, float dt)
         lp = (Placement){ { -0.25f, -0.14f, -0.46f }, { 0.35f, -0.1f, 1.45f } };
         for (int f = 0; f < 5; f++)
             ltarget[f] = 0.9f;
+    }
+    if (in->left == LEFT_SHIELD) {
+        /* the shield strapped to the forearm, low on the left; raised to block */
+        lp = (Placement){ { -0.2f, -0.24f, -0.42f }, { 0.3f, 0.45f, 0.0f } };
+        if (in->action == ACT_BLOCK)
+            lp = (Placement){ { -0.15f, -0.2f, -0.5f }, { 0.35f, 0.25f, 0.2f } };
+        if (in->action == ACT_SWING && in->held == ITEM_NONE && in->swing == SWING_BASH) {
+            float f = sinf(glm_clamp(in->action_t / 0.6f, 0.0f, 1.0f) * GLM_PIf);
+            lp.pos[2] -= f * 0.2f;
+            lp.pos[0] += f * 0.08f;
+        }
+        for (int f = 0; f < 5; f++)
+            ltarget[f] = 0.9f;
+    }
+    if (in->swimming) {
+        float reach = sinf(stroke) * 0.5f + 0.5f;
+        lp = (Placement){ { -0.1f - (1.0f - reach) * 0.16f, -0.2f + reach * 0.06f, -0.52f + (1.0f - reach) * 0.2f },
+                          { 0.2f, 0.3f - (1.0f - reach) * 0.7f, -1.2f } };
+        for (int f = 0; f < 5; f++)
+            ltarget[f] = 0.15f;
     }
     if (in->reach_t > 0.0f) {
         /* out and grab, then back */
@@ -403,15 +443,18 @@ static void grip_matrix(ItemId id, bool weapon, mat4 out)
         glm_rotate(out, -0.85f, (vec3){1, 0, 0});
         return;
     }
+    if (id == ITEM_GAS_MASK) {
+        /* gripped by the chin of the mask: it sits just above the fist, the hose hangs */
+        glm_translate_make(out, (vec3){-0.05f, 0.02f, -0.09f});
+        glm_rotate(out, -GLM_PI_2f, (vec3){0, 0, 1});
+        glm_rotate(out, GLM_PI_2f, (vec3){0, 1, 0});
+        glm_translate(out, (vec3){0.0f, -0.4f, 0.0f});
+        return;
+    }
     if (weapon) {
         /* handle through the fist, tipped forward */
         glm_translate_make(out, (vec3){-0.028f, 0.0f, -0.07f});
         glm_rotate(out, -0.35f, (vec3){1, 0, 0});
-        if (id == ITEM_SHIELD) {
-            glm_translate_make(out, (vec3){-0.09f, 0.02f, -0.06f});
-            glm_rotate(out, GLM_PI_2f, (vec3){0, 1, 0});
-            glm_rotate(out, 0.2f, (vec3){1, 0, 0});
-        }
     } else {
         /* resting on the open palm */
         glm_translate_make(out, (vec3){-0.05f, 0.0f, -0.07f});
@@ -437,10 +480,32 @@ static void lantern_matrix(const Hands *h, mat4 out)
     glm_translate(out, (vec3){-c[0], -m->max[1], -c[2]});
 }
 
+/* the kite shield on the left forearm, its straps toward you */
+static void shield_matrix(const Hands *h, mat4 out)
+{
+    const ItemDef *it = &ITEMS[ITEM_SHIELD];
+    /* on the outside of the forearm just behind the wrist, face out, point down */
+    glm_mat4_mul((vec4 *)h->world[1], (vec4 *)h->pose[1].world[B_PALM], out);
+    glm_translate(out, (vec3){0.02f, 0.02f, -0.04f});
+    glm_rotate(out, GLM_PIf, (vec3){0, 1, 0});
+    glm_rotate(out, 0.2f, (vec3){0, 0, 1});
+    glm_translate(out, (vec3){0.0f, -0.08f, 0.0f});
+    glm_mat4_mul(out, (vec4 *)it->hold, out);
+}
+
 void hands_draw(Hands *h, const HandInput *in, GLuint prog, mat4 view_proj)
 {
     /* tint.a = 1 tells the shader these are the viewer's own hands (kept dry in the rain) */
     DrawParams dp = { .tint = { 0, 0, 0, 1 } };
+
+    /* the sleeves match what you wear: leather, steel gauntlets, fur, or embroidered robes */
+    Material *sleeve = &h->model.prims[1].mat;
+    switch (in->body_armor) {
+    case ITEM_KNIGHT_PLATE: material_color(sleeve, 0.55f, 0.56f, 0.6f, 0.28f, 1.0f); break;
+    case ITEM_BARBARIAN_FURS: material_color(sleeve, 0.32f, 0.21f, 0.12f, 0.95f, 0.0f); break;
+    case ITEM_MAGISTER_ROBES: material_color(sleeve, 0.2f, 0.08f, 0.32f, 0.8f, 0.0f); break;
+    default: material_color(sleeve, 0.07f, 0.045f, 0.03f, 0.75f, 0.0f); break;
+    }
 
     /* right hand */
     model_draw(&h->model, &h->pose[0], prog, view_proj, h->world[0], &dp);
@@ -450,7 +515,8 @@ void hands_draw(Hands *h, const HandInput *in, GLuint prog, mat4 view_proj)
     model_draw(&h->model, &h->pose[1], prog, view_proj, h->world[1], &dp);
     glFrontFace(GL_CCW);
 
-    if (in->held != ITEM_NONE && ITEMS[in->held].loaded && ITEMS[in->held].kind != KIND_SPELL) {
+    if (in->held != ITEM_NONE && ITEMS[in->held].loaded && ITEMS[in->held].kind != KIND_SPELL &&
+        !(in->held == ITEM_GAS_MASK && in->mask_on)) {
         const ItemDef *it = &ITEMS[in->held];
         bool weapon = it->kind == KIND_WEAPON || it->kind == KIND_THROWN || in->held == ITEM_TORCH;
         mat4 grip, xf;
@@ -475,6 +541,12 @@ void hands_draw(Hands *h, const HandInput *in, GLuint prog, mat4 view_proj)
         lantern_matrix(h, xf);
         glFrontFace(GL_CW);
         model_draw(&ITEMS[ITEM_LANTERN].model, NULL, prog, view_proj, xf, &dp);
+        glFrontFace(GL_CCW);
+    } else if (in->left == LEFT_SHIELD && ITEMS[ITEM_SHIELD].loaded) {
+        mat4 xf;
+        shield_matrix(h, xf);
+        glFrontFace(GL_CW);
+        model_draw(&ITEMS[ITEM_SHIELD].model, NULL, prog, view_proj, xf, &dp);
         glFrontFace(GL_CCW);
     }
 }

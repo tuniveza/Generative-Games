@@ -1,6 +1,7 @@
 #include "game.h"
 #include "meshgen.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 /* Spells (learned from tomes found in the crypt's tombs), magic projectiles, the
@@ -64,6 +65,13 @@ void tombs_build_models(Game *g)
 static const char *spell_word(ItemId id)
 {
     switch (id) {
+    case ITEM_TOME_GILLS: return "Gills";
+    case ITEM_TOME_TIDE: return "Tides";
+    case ITEM_TOME_METEOR: return "Meteors";
+    case ITEM_TOME_SPIKES: return "Thorns";
+    case ITEM_TOME_SHADOW: return "Shadows";
+    case ITEM_TOME_GALE: return "Gales";
+    case ITEM_TOME_MISSILES: return "Seeking Stars";
     case ITEM_TOME_FIREBALL: return "Fireball";
     case ITEM_TOME_FROST: return "Frost";
     case ITEM_TOME_LIGHTNING: return "Storms";
@@ -118,7 +126,7 @@ void bolt_fire(Game *g, BoltKind kind, vec3 from, vec3 vel, bool hostile)
         Bolt *b = &g->bolts[i];
         if (b->used)
             continue;
-        *b = (Bolt){ .used = true, .kind = kind, .life = 3.0f, .hostile = hostile };
+        *b = (Bolt){ .used = true, .kind = kind, .life = kind == BOLT_METEOR ? 6.0f : 3.0f, .hostile = hostile, .target = -1 };
         glm_vec3_copy(from, b->pos);
         glm_vec3_copy(vel, b->vel);
         return;
@@ -128,6 +136,31 @@ void bolt_fire(Game *g, BoltKind kind, vec3 from, vec3 vel, bool hostile)
 static void bolt_impact(Game *g, Bolt *b)
 {
     b->used = false;
+    if (b->kind == BOLT_EMBER) {
+        /* a coal bursting where it lands */
+        fx_flame(&g->ps, b->pos, 3.0f, 0.1f);
+        fx_sparks(&g->ps, b->pos, 16);
+        audio_play_at(SFX_LAVA_BOMB, b->pos, 0.5f);
+        if (!g->dead && glm_vec3_distance(b->pos, (vec3){g->pos[0], g->pos[1] + 0.8f, g->pos[2]}) < 2.6f)
+            hurt_player(g, b->pos, 9.0f);
+        return;
+    }
+    if (b->kind == BOLT_METEOR) {
+        explode(g, b->pos, ITEMS[ITEM_TOME_METEOR].damage, ITEMS[ITEM_TOME_METEOR].range, false);
+        for (int i = 0; i < MAX_CREATURES; i++) {
+            Creature *c = &g->creatures[i];
+            if (c->used && c->state != ST_DEAD && glm_vec3_distance(c->pos, b->pos) < 5.0f)
+                c->burn_t = 4.0f;
+        }
+        return;
+    }
+    if (b->kind == BOLT_HARPOON) {
+        /* the harpoon stays where it struck: go and pick it up */
+        vec3 at = { b->pos[0], ground_at(g, b->pos[0], b->pos[2], b->pos[1] + 0.3f) + 0.05f, b->pos[2] };
+        spawn_pickup(g, ITEM_HARPOON, 1, at);
+        audio_play_at(SFX_HIT, b->pos, 0.8f);
+        return;
+    }
     if (b->kind == BOLT_FIREBALL) {
         explode(g, b->pos, ITEMS[ITEM_TOME_FIREBALL].damage, ITEMS[ITEM_TOME_FIREBALL].range, false);
         for (int i = 0; i < MAX_CREATURES; i++) {
@@ -152,22 +185,43 @@ static void bolts_update(Game *g, float dt)
         glm_vec3_muladds(b->vel, dt, next);
         b->life -= dt;
 
+        /* thrown things fall; seeking stars turn toward their prey */
+        if (b->kind == BOLT_EMBER || b->kind == BOLT_HARPOON)
+            b->vel[1] -= 9.8f * dt;
+        if (b->kind == BOLT_STAR && b->target >= 0) {
+            Creature *c = &g->creatures[b->target];
+            if (c->used && c->state != ST_DEAD) {
+                vec3 to = { c->pos[0], c->pos[1] + creature_height(c) * 0.5f, c->pos[2] };
+                glm_vec3_sub(to, b->pos, to);
+                glm_vec3_normalize(to);
+                glm_vec3_scale(to, 16.0f, to);
+                glm_vec3_lerp(b->vel, to, 1.0f - expf(-dt * 5.0f), b->vel);
+            }
+        }
         /* trail */
         if (b->kind == BOLT_FIREBALL)
             fx_flame(&g->ps, b->pos, 0.9f, dt);
-        else
+        else if (b->kind == BOLT_EMBER)
+            fx_flame(&g->ps, b->pos, 0.5f, dt);
+        else if (b->kind == BOLT_METEOR)
+            fx_flame(&g->ps, b->pos, 4.0f, dt);
+        else if (b->kind == BOLT_STAR)
+            fx_magic(&g->ps, b->pos, (vec3){4.0f, 3.0f, 6.5f}, 0.05f, 3);
+        else if (b->kind != BOLT_HARPOON)
             fx_magic(&g->ps, b->pos, (vec3){3.0f, 0.8f, 5.0f}, 0.08f, 2);
 
         bool hit = b->life <= 0.0f || !level_line_clear(&g->level, b->pos, next) ||
                    next[1] < ground_at(g, next[0], next[2], next[1] + 0.5f);
+        if (b->kind == BOLT_METEOR && next[1] > b->pos[1] - 0.001f && !hit)
+            hit = false;
         if (!hit && b->hostile) {
             vec3 body = { g->pos[0], g->pos[1] + 1.0f, g->pos[2] };
             if (!g->dead && glm_vec3_distance(next, body) < 0.8f) {
-                hurt_player(g, b->pos, 10.0f);
+                hurt_player(g, b->pos, b->kind == BOLT_EMBER ? 6.0f : 10.0f);
                 hit = true;
             }
         }
-        if (!hit && !b->hostile) {
+        if (!hit && !b->hostile && b->kind != BOLT_METEOR) {
             for (int k = 0; k < MAX_CREATURES; k++) {
                 Creature *c = &g->creatures[k];
                 if (!c->used || c->state == ST_DEAD)
@@ -175,6 +229,13 @@ static void bolts_update(Game *g, float dt)
                 vec3 mid = { c->pos[0], c->pos[1] + creature_height(c) * 0.5f, c->pos[2] };
                 if (glm_vec3_distance(next, mid) < creature_radius(c) + 0.5f) {
                     hit = true;
+                    if (b->kind == BOLT_STAR || b->kind == BOLT_HARPOON) {
+                        float dmg = b->kind == BOLT_STAR ? ITEMS[ITEM_TOME_MISSILES].damage : ITEMS[ITEM_HARPOON].damage * (creature_aquatic(c) ? 2.0f : 1.0f);
+                        vec3 push;
+                        glm_vec3_normalize_to(b->vel, push);
+                        glm_vec3_scale(push, 3.0f, push);
+                        damage_creature(g, c, dmg, push);
+                    }
                     break;
                 }
             }
@@ -331,13 +392,239 @@ void magic_cast(Game *g, Spell spell)
         audio_play(SFX_BLINK, 1.0f);
         break;
     }
+    case SPELL_GILLS:
+        g->gills_t = 60.0f;
+        g->stamina = g->max_stamina;
+        g->breath = g->max_breath;
+        fx_magic(&g->ps, g->head, (vec3){0.6f, 3.5f, 4.5f}, 0.5f, 50);
+        audio_play(SFX_CAST_GILLS, 1.0f);
+        message(g, COL_MAGIC, "Cool water floods your lungs, and it's fine. It's lovely, even. (a minute)");
+        break;
+    case SPELL_TIDE: {
+        /* a wave rolling out ahead: knocks everything over, douses fire */
+        vec3 flat;
+        flat_forward(g, flat);
+        for (int k = 0; k < 120; k++) {
+            Particle p = {0};
+            float side = (frand() - 0.5f) * 2.0f;
+            glm_vec3_copy((vec3){g->pos[0] + flat[0] + flat[2] * side, g->pos[1] + 0.3f + frand() * 1.2f, g->pos[2] + flat[2] - flat[0] * side}, p.pos);
+            glm_vec3_copy((vec3){flat[0] * (8.0f + frand() * 6.0f) + flat[2] * side * 3.0f, 1.0f + frand() * 2.0f,
+                                 flat[2] * (8.0f + frand() * 6.0f) - flat[0] * side * 3.0f}, p.vel);
+            glm_vec4_copy((vec4){0.6f, 0.95f, 1.0f, 0.7f}, p.color0);
+            glm_vec4_copy((vec4){0.8f, 1.0f, 1.0f, 0.0f}, p.color1);
+            p.size0 = 0.25f;
+            p.size1 = 0.6f;
+            p.max_life = p.life = 0.9f;
+            p.gravity = 6.0f;
+            p.drag = 0.8f;
+            particles_emit(&g->ps, &p);
+        }
+        audio_play(SFX_CAST_TIDE, 1.0f);
+        for (int i = 0; i < MAX_CREATURES; i++) {
+            Creature *c = &g->creatures[i];
+            if (!c->used || c->state == ST_DEAD)
+                continue;
+            vec3 d;
+            glm_vec3_sub(c->pos, g->pos, d);
+            d[1] = 0;
+            float len = glm_vec3_norm(d);
+            if (len > ITEMS[ITEM_TOME_TIDE].range || (len > 1.0f && glm_vec3_dot(d, flat) / len < 0.4f))
+                continue;
+            vec3 push;
+            glm_vec3_scale(flat, ITEMS[ITEM_TOME_TIDE].knockback, push);
+            c->burn_t = 0.0f;
+            damage_creature(g, c, ITEMS[ITEM_TOME_TIDE].damage * (c->type == CR_IMP ? 3.0f : 1.0f), push);
+        }
+        break;
+    }
+    case SPELL_METEOR: {
+        /* where you're looking, up to 45 paces off, a stone falls */
+        vec3 at;
+        glm_vec3_copy(g->head, at);
+        for (float d = 1.0f; d < 45.0f; d += 0.5f) {
+            vec3 q;
+            glm_vec3_copy(g->head, q);
+            glm_vec3_muladds(dir, d, q);
+            if (q[1] < ground_at(g, q[0], q[2], q[1] + 0.5f) || !level_line_clear(&g->level, g->head, q))
+                break;
+            glm_vec3_copy(q, at);
+        }
+        vec3 from = { at[0] + 12.0f, at[1] + 50.0f, at[2] - 8.0f }, vel;
+        glm_vec3_sub(at, from, vel);
+        glm_vec3_scale(vel, 1.0f / 1.6f, vel);
+        bolt_fire(g, BOLT_METEOR, from, vel, false);
+        audio_play(SFX_CAST_METEOR, 1.0f);
+        message(g, COL_MAGIC, "The sky splits, and something burning falls out of it.");
+        break;
+    }
+    case SPELL_SPIKES:
+    case SPELL_GALE:
+        for (int i = 0; i < MAX_EFFECTS; i++) {
+            SpellEffect *e = &g->effects[i];
+            if (e->used)
+                continue;
+            *e = (SpellEffect){ .used = true, .kind = spell == SPELL_GALE ? 0 : 1, .life = spell == SPELL_GALE ? 5.0f : 1.2f };
+            flat_forward(g, e->dir);
+            glm_vec3_copy(g->pos, e->pos);
+            if (spell == SPELL_GALE) {
+                glm_vec3_muladds(e->dir, 8.0f, e->pos);
+                e->pos[1] = ground_at(g, e->pos[0], e->pos[2], g->pos[1] + 1.0f);
+            }
+            break;
+        }
+        audio_play(spell == SPELL_GALE ? SFX_CAST_GALE : SFX_CAST_SPIKES, 1.0f);
+        break;
+    case SPELL_SHADOW:
+        g->shadow_t = 10.0f;
+        fx_magic(&g->ps, (vec3){g->pos[0], g->pos[1] + 1.0f, g->pos[2]}, (vec3){0.6f, 0.3f, 1.2f}, 0.8f, 60);
+        audio_play(SFX_CAST_SHADOW, 1.0f);
+        message(g, COL_MAGIC, "You fold yourself into the shadows. For ten seconds, nothing can find you.");
+        break;
+    case SPELL_MISSILES: {
+        Creature *skip[3] = { 0 };
+        for (int k = 0; k < 3; k++) {
+            Creature *c = nearest(g, g->head, NULL, ITEMS[ITEM_TOME_MISSILES].range, 0.0f, skip, k);
+            skip[k] = c;
+            vec3 vel;
+            glm_vec3_scale(dir, 10.0f, vel);
+            vel[0] += (k - 1) * 3.0f;
+            vel[1] += 3.0f;
+            bolt_fire(g, BOLT_STAR, palm, vel, false);
+            for (int b = MAX_BOLTS - 1; b >= 0; b--)
+                if (g->bolts[b].used && g->bolts[b].kind == BOLT_STAR && g->bolts[b].target < 0) {
+                    g->bolts[b].target = c ? (int)(c - g->creatures) : -1;
+                    break;
+                }
+        }
+        audio_play(SFX_CAST_STARS, 1.0f);
+        break;
+    }
     default:
         break;
     }
 }
 
+static void effects_update(Game *g, float dt)
+{
+    for (int i = 0; i < MAX_EFFECTS; i++) {
+        SpellEffect *e = &g->effects[i];
+        if (!e->used)
+            continue;
+        float before = e->t;
+        e->t += dt;
+        if (e->kind == 0) {
+            /* the whirlwind wanders ahead, lifting and flinging whatever it catches */
+            glm_vec3_muladds(e->dir, dt * 1.5f, e->pos);
+            e->pos[1] = ground_at(g, e->pos[0], e->pos[2], e->pos[1] + 1.0f);
+            for (int k = 0; k < 6; k++) {
+                Particle p = {0};
+                float a = frand() * 6.2832f, r = 0.5f + frand() * 2.5f;
+                glm_vec3_copy((vec3){e->pos[0] + cosf(a) * r, e->pos[1] + frand() * 4.0f, e->pos[2] + sinf(a) * r}, p.pos);
+                glm_vec3_copy((vec3){-sinf(a) * 9.0f, 3.0f + frand() * 3.0f, cosf(a) * 9.0f}, p.vel);
+                glm_vec4_copy((vec4){0.6f, 0.9f, 0.7f, 0.4f}, p.color0);
+                glm_vec4_copy((vec4){0.7f, 0.8f, 0.7f, 0.0f}, p.color1);
+                p.size0 = 0.3f;
+                p.size1 = 1.2f;
+                p.max_life = p.life = 0.8f;
+                p.drag = 0.3f;
+                particles_emit(&g->ps, &p);
+            }
+            for (int c = 0; c < MAX_CREATURES; c++) {
+                Creature *cr = &g->creatures[c];
+                if (!cr->used || cr->state == ST_DEAD || glm_vec3_distance(cr->pos, e->pos) > 5.0f)
+                    continue;
+                vec3 around = { -(cr->pos[2] - e->pos[2]), 0, cr->pos[0] - e->pos[0] };
+                glm_vec3_muladds(around, dt * 3.0f, cr->knock);
+                cr->pos[1] += dt * 2.0f;
+                cr->hp -= ITEMS[ITEM_TOME_GALE].damage * dt * 0.4f;
+                cr->hit_flash = 0.05f;
+                if (cr->hp <= 0.0f)
+                    damage_creature(g, cr, 1.0f, (vec3){0, 0, 0});
+            }
+        } else {
+            /* stone spikes bursting up in a line, one after another */
+            int from = (int)(before / e->life * 14.0f), to = (int)(e->t / e->life * 14.0f);
+            for (int k = from; k < to && k < 14; k++) {
+                vec3 at;
+                glm_vec3_copy(e->pos, at);
+                glm_vec3_muladds(e->dir, 1.5f + k * 0.9f, at);
+                at[1] = ground_at(g, at[0], at[2], e->pos[1] + 1.0f);
+                fx_dust(&g->ps, at, 3);
+                audio_play_at(SFX_HIT_HEAVY, at, 0.4f);
+                for (int c = 0; c < MAX_CREATURES; c++) {
+                    Creature *cr = &g->creatures[c];
+                    if (cr->used && cr->state != ST_DEAD && glm_vec3_distance(cr->pos, at) < 1.6f)
+                        damage_creature(g, cr, ITEMS[ITEM_TOME_SPIKES].damage, (vec3){0, 0, 0}), cr->knock[1] += 4.0f;
+                }
+            }
+        }
+        if (e->t >= e->life + (e->kind == 1 ? 1.5f : 0.0f))
+            e->used = false;
+    }
+}
+
+static Model spike_model;
+
+void spells_draw(Game *g, GLuint prog, mat4 vp, bool depth)
+{
+    if (!spike_model.prim_count) {
+        MeshBuilder mb;
+        mb_init(&mb);
+        mat4 xf = GLM_MAT4_IDENTITY_INIT;
+        mb_cylinder(&mb, xf, 0.35f, 0.0f, 1.8f, 6, 1.0f);
+        Material stone;
+        material_from_dir(&stone, "assets/textures/rock_face");
+        model_from_builders(&spike_model, &mb, &stone, 1);
+        mb_free(&mb);
+    }
+    DrawParams dp = { .depth_only = depth };
+    for (int i = 0; i < MAX_EFFECTS; i++) {
+        SpellEffect *e = &g->effects[i];
+        if (!e->used || e->kind != 1)
+            continue;
+        int shown = (int)(fminf(e->t / e->life, 1.0f) * 14.0f);
+        float fade = e->t > e->life ? 1.0f - (e->t - e->life) / 1.5f : 1.0f;
+        for (int k = 0; k < shown; k++) {
+            vec3 at;
+            glm_vec3_copy(e->pos, at);
+            glm_vec3_muladds(e->dir, 1.5f + k * 0.9f, at);
+            at[1] = ground_at(g, at[0], at[2], e->pos[1] + 1.0f) - (1.0f - fade) * 1.8f;
+            mat4 xf;
+            glm_translate_make(xf, at);
+            glm_rotate_y(xf, k * 1.3f, xf);
+            glm_rotate_z(xf, sinf(k * 2.1f) * 0.25f, xf);
+            model_draw(&spike_model, NULL, prog, vp, xf, &dp);
+        }
+    }
+    /* a meteor is a glowing stone */
+    for (int i = 0; i < MAX_BOLTS; i++) {
+        Bolt *b = &g->bolts[i];
+        if (!b->used || (b->kind != BOLT_METEOR && b->kind != BOLT_HARPOON))
+            continue;
+        mat4 xf, fit;
+        glm_translate_make(xf, b->pos);
+        if (b->kind == BOLT_METEOR) {
+            glm_scale_uni(xf, 1.4f);
+            DrawParams mp = dp;
+            if (!depth)
+                glm_vec4_copy((vec4){3.0f, 0.8f, 0.1f, 0.0f}, mp.tint);
+            model_draw(&g->prop_models[PM_PUMICE], NULL, prog, vp, xf, &mp);
+        } else {
+            vec3 d;
+            glm_vec3_normalize_to(b->vel, d);
+            versor q;
+            glm_quat_from_vecs((vec3){0, 1, 0}, d, q);
+            glm_quat_rotate(xf, q, xf);
+            glm_mat4_mul(xf, ITEMS[ITEM_HARPOON].hold, xf);
+            model_draw(&ITEMS[ITEM_HARPOON].model, NULL, prog, vp, xf, &dp);
+            (void)fit;
+        }
+    }
+}
+
 void magic_update(Game *g, float dt)
 {
+    effects_update(g, dt);
     bolts_update(g, dt);
 
     /* the wisp floats beside your shoulder, bobbing, lighting the way */

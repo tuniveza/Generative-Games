@@ -900,7 +900,7 @@ static void draw_pass(const Model *m, const Pose *pose, GLuint prog, mat4 view_p
     for (int k = 0; k < m->node_count; k++) {
         int ni = m->order[k];
         const ModelNode *node = &m->nodes[ni];
-        if (node->mesh < 0)
+        if (node->mesh < 0 || (dp->skip && dp->skip[ni]))
             continue;
 
         /* skinned meshes are placed by their bones, not their node */

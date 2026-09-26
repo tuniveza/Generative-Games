@@ -12,12 +12,15 @@
 #define SUNKEN_Y   (FLOOR_Y - 0.8f) /* floor of the flooded hall */
 #define WATER_Y    (FLOOR_Y - 0.25f)
 #define WALL_T      1.1f            /* wall thickness */
+#define WORLD_HALF  400.0f          /* the whole world (terrain, coast, volcano) spans +-this */
 
 typedef enum { LAYER_GROUND, LAYER_UPPER, LAYER_CRYPT, LAYER_COUNT } Layer;
 
 typedef enum {
     AREA_OUTSIDE, AREA_RUINS, AREA_GARDEN, AREA_LIBRARY, AREA_FLOODED,
     AREA_CRYPT, AREA_PALACE, AREA_UPPER,
+    /* beyond the ruins (world.c) */
+    AREA_BEACH, AREA_PROMENADE, AREA_MARINA, AREA_VILLAGE, AREA_VOLCANO, AREA_OCEAN, AREA_UNDERSEA,
 } Area;
 
 /* solid box the player and creatures can't walk through (but can stand on) */
@@ -40,6 +43,15 @@ typedef enum {
     SPAWN_STATUE, SPAWN_BARREL, SPAWN_CRATE, SPAWN_VASE, SPAWN_BOULDER,
     SPAWN_SHRUB, SPAWN_FERN, SPAWN_BENCH, SPAWN_FOUNTAIN, SPAWN_BOOKSHELF, SPAWN_BOOKPILE,
     SPAWN_CHANDELIER, SPAWN_PLANT, SPAWN_CABINET,
+    /* beyond the ruins (world.c and friends) */
+    SPAWN_PROP,             /* variant = PM_ model, normal[0] = scale, normal[1] = sink */
+    SPAWN_CREATURE,         /* variant = CreatureType, index = its own variant */
+    SPAWN_ANIMAL,           /* variant = Species */
+    SPAWN_VILLAGER,         /* index = which resident (npc.c) */
+    SPAWN_LAMP,             /* a lamp that stays where it is: variant = LightKind */
+    SPAWN_BOAT,             /* a rowing boat moored here */
+    SPAWN_THING,            /* something to use: variant = ThingKind, index = which one (quest.c) */
+    SPAWN_VENT,             /* a fumarole breathing poison gas */
     SPAWN_KIND_COUNT
 } SpawnKind;
 
@@ -69,8 +81,11 @@ typedef struct {
     Hole holes[MAX_HOLES]; int hole_count;
     vec3 min, max;          /* world bounds */
 
-    /* boxes sorted into map cells, for fast collision queries */
-    int *grid_start;        /* w*h + 1 offsets into grid_items */
+    /* boxes sorted into CELL-sized squares over the whole world (not just the map),
+     * for fast collision queries */
+    int grid_w, grid_h;
+    float grid_x0, grid_z0; /* world position of square (0, 0)'s corner */
+    int *grid_start;        /* grid_w*grid_h + 1 offsets into grid_items */
     int *grid_items;
 
     /* what covers each spot (0.5 m grid): the highest solid surface. used for rain,
@@ -84,6 +99,9 @@ typedef struct {
 #define COVER_RES 0.5f
 
 void level_build(Level *lv);
+/* the "what's overhead" grid, from every box so far: call once the world's buildings
+ * are in (world_build), before the game adds doors and characters */
+void level_build_cover(Level *lv);
 /* call after adding the game's own boxes (doors, tombs...) so queries see them */
 void level_finalize(Level *lv);
 void level_free(Level *lv);
@@ -95,6 +113,7 @@ void level_world_to_cell(const Level *lv, float x, float z, int *cx, int *cy);
 Area level_area(const Level *lv, vec3 p);
 
 int level_add_box(Level *lv, vec3 min, vec3 max);
+Spawn *level_add_spawn(Level *lv, SpawnKind kind, vec3 pos, float yaw);
 
 /* highest walkable surface under (x, z) that is no more than `step` above `feet`:
  * floors, stairs, rubble, walls you're on top of. -1000 if nothing (use the terrain) */

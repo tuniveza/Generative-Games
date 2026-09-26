@@ -15,7 +15,7 @@
 #define PI_F       3.14159265f
 #define VARIANTS   4
 #define MAX_VOICES 48
-#define MAX_CLIPS  64
+#define MAX_CLIPS  192
 
 /* ---------- small DSP helpers ---------- */
 
@@ -75,6 +75,19 @@ static void set_gains(void)
         { SFX_CAST_FROST, 0.55f }, { SFX_CAST_LIGHTNING, 0.75f }, { SFX_CAST_HEAL, 0.45f },
         { SFX_CAST_WISP, 0.45f }, { SFX_BLINK, 0.55f }, { SFX_MAGIC_HIT, 0.6f }, { SFX_NO_MANA, 0.3f },
         { SFX_THUNDER, 1.0f }, { SFX_CLICK, 0.18f },
+        { SFX_SPLASH, 0.7f }, { SFX_SWIM, 0.35f }, { SFX_GASP, 0.5f }, { SFX_BUBBLES, 0.35f }, { SFX_DROWN, 0.6f },
+        { SFX_STEP_SAND, 0.18f }, { SFX_STEP_WOOD, 0.3f }, { SFX_GULL, 0.35f }, { SFX_WALRUS_WHISTLE, 0.55f },
+        { SFX_WALRUS_GRUNT, 0.55f }, { SFX_DOLPHIN, 0.4f }, { SFX_OAR, 0.45f }, { SFX_BOAT_CREAK, 0.4f },
+        { SFX_CAST_LINE, 0.45f }, { SFX_REEL, 0.25f }, { SFX_BITE, 0.5f }, { SFX_CATCH, 0.45f }, { SFX_LINE_SNAP, 0.5f },
+        { SFX_JELLY_STING, 0.55f }, { SFX_SHARK_BITE, 0.8f }, { SFX_CRAB, 0.4f }, { SFX_CONCH, 0.8f }, { SFX_WHIRLPOOL, 0.8f },
+        { SFX_SHELLS, 0.4f }, { SFX_BUY, 0.5f }, { SFX_QUEST, 0.45f }, { SFX_QUEST_DONE, 0.55f }, { SFX_BELL, 0.9f },
+        { SFX_CHIME, 0.5f }, { SFX_LEVER, 0.55f }, { SFX_PLATE, 0.5f }, { SFX_GATE, 0.8f }, { SFX_PAGE, 0.3f },
+        { SFX_EQUIP, 0.45f }, { SFX_DIG, 0.5f }, { SFX_DETECTOR, 0.25f }, { SFX_UKULELE, 0.55f }, { SFX_GNOME, 0.45f },
+        { SFX_SHOP_BELL, 0.4f }, { SFX_RUMBLE, 0.9f }, { SFX_ERUPTION, 1.0f }, { SFX_LAVA_BOMB, 0.8f }, { SFX_HISS, 0.4f },
+        { SFX_COUGH, 0.5f }, { SFX_HAILSTONE, 0.3f }, { SFX_GUST, 0.5f }, { SFX_REBIRTH, 0.6f },
+        { SFX_BAT, 0.35f }, { SFX_IMP, 0.5f }, { SFX_WRAITH, 0.5f }, { SFX_EEL, 0.55f }, { SFX_KING_ROAR, 1.0f },
+        { SFX_DROWNED, 0.5f }, { SFX_CAST_TIDE, 0.7f }, { SFX_CAST_METEOR, 0.7f }, { SFX_CAST_SPIKES, 0.6f },
+        { SFX_CAST_SHADOW, 0.5f }, { SFX_CAST_GALE, 0.6f }, { SFX_CAST_STARS, 0.5f }, { SFX_CAST_GILLS, 0.5f },
     };
     for (size_t i = 0; i < sizeof g / sizeof g[0]; i++)
         SFX_GAIN[g[i].s] = g[i].g;
@@ -187,6 +200,38 @@ static void add_whoosh(float *d, int len, float f0, float f1, float q, float amp
         float t = (float)i / len;
         svf(&f, rnd(), f0 + (f1 - f0) * t, q);
         d[i] += f.bp * amp * sinf(PI_F * t);
+    }
+}
+
+/* a plucked string (Karplus-Strong) mixed into a buffer: ukulele, guitar */
+static void add_ks(float *d, int len, float freq, float amp, float decay)
+{
+    int n = (int)(SR / freq);
+    if (n < 2) n = 2;
+    float *ring = calloc(n, sizeof *ring);
+    for (int i = 0; i < n; i++)
+        ring[i] = rnd();
+    float rho = powf(0.001f, 1.0f / (decay * freq));
+    int idx = 0;
+    for (int i = 0; i < len; i++) {
+        int next = (idx + 1) % n;
+        float v = ring[idx];
+        ring[idx] = rho * 0.5f * (ring[idx] + ring[next]);
+        idx = next;
+        d[i] += v * amp;
+    }
+    free(ring);
+}
+
+/* noise swelling up and falling away through a moving low-pass: waves, wind, rumbles */
+static void add_swell(float *d, int len, float c0, float c1, float amp, float peak)
+{
+    float lp1 = 0, lp2 = 0;
+    for (int i = 0; i < len; i++) {
+        float t = (float)i / len;
+        float e = t < peak ? t / peak : (1.0f - t) / (1.0f - peak);
+        float cut = c0 + (c1 - c0) * e;
+        d[i] += onepole(&lp2, onepole(&lp1, rnd(), cut), cut) * amp * e;
     }
 }
 
@@ -511,6 +556,412 @@ static void gen_sfx(void)
 
         gen_noise_hit(&sfx[SFX_CLICK][v], 0.05f, 3000, 1.0f, 0.001f, 0.008f, true);
 
+        /* ---- the sea ---- */
+        b = &sfx[SFX_SPLASH][v];
+        d = new_buffer(b, 1.1f);
+        add_swell(d, b->len, 300, 5000, 1.4f, 0.06f);
+        for (int c = 0; c < 5; c++) {
+            int st = (int)((0.05f + rnd01() * 0.4f) * SR);
+            add_glide(d + st, (int)(0.12f * SR), 300 + rnd01() * 300, 900 + rnd01() * 700, 0.1f, 0.25f, 0.005f, 0.04f, 0);
+        }
+        b = &sfx[SFX_SWIM][v];
+        d = new_buffer(b, 0.6f);
+        add_swell(d, b->len, 400, 2500 + r * 1500, 0.9f, 0.3f);
+        add_glide(d + (int)(0.15f * SR), (int)(0.1f * SR), 400, 700, 0.08f, 0.15f, 0.005f, 0.03f, 0);
+        b = &sfx[SFX_GASP][v];
+        d = new_buffer(b, 0.7f);
+        {
+            Svf f = {0};
+            for (int i = 0; i < b->len; i++) {
+                float t = (float)i / SR;
+                svf(&f, rnd(), 900 + 1600 * t, 1.2f);
+                d[i] = f.bp * sinf(PI_F * fminf(t / 0.55f, 1.0f)) * (t < 0.55f ? 1.0f : 0.0f);
+            }
+        }
+        b = &sfx[SFX_BUBBLES][v];
+        d = new_buffer(b, 0.8f);
+        for (int c = 0; c < 7; c++) {
+            int st = (int)(rnd01() * 0.6f * SR);
+            add_glide(d + st, b->len - st, 250 + rnd01() * 400, 700 + rnd01() * 900, 0.04f, 0.4f, 0.002f, 0.03f, 0);
+        }
+        b = &sfx[SFX_DROWN][v];
+        d = new_buffer(b, 0.9f);
+        add_voice(d, b->len, 150, 90, 500, 0.4f, 0.02f, 0.3f);
+        for (int c = 0; c < 6; c++) {
+            int st = (int)(rnd01() * 0.7f * SR);
+            add_glide(d + st, b->len - st, 200 + rnd01() * 200, 500, 0.04f, 0.5f, 0.002f, 0.03f, 0);
+        }
+        gen_noise_hit(&sfx[SFX_STEP_SAND][v], 0.14f, 3500 + r * 1500, 0.7f, 0.006f, 0.035f, true);
+        b = &sfx[SFX_STEP_WOOD][v];
+        d = new_buffer(b, 0.2f);
+        add_glide(d, b->len, 190 + r * 40, 120, 0.05f, 0.9f, 0.002f, 0.05f, 0);
+        add_bell(d, b->len, 900 + r * 300, CLICKS, 3, 0.25f, 0.02f);
+        b = &sfx[SFX_GULL][v];
+        d = new_buffer(b, 0.9f);
+        for (int c = 0; c < 2 + (v & 1); c++)
+            add_voice(d + (int)(c * 0.26f * SR), (int)(0.22f * SR), 820 + r * 150 - c * 60, 560, 1900 + r * 300, 0.25f, 0.01f, 0.08f);
+        /* the walrus's whistle: a sweet breathy up-glide, a flick higher, then a long
+         * warbling fall ("fweee... fwoo"), each walrus in its own key */
+        b = &sfx[SFX_WALRUS_WHISTLE][v];
+        d = new_buffer(b, 2.2f);
+        {
+            float base = 820 + r * 260;
+            float phase = 0;
+            Svf breath = {0};
+            for (int i = 0; i < b->len; i++) {
+                float t = (float)i / SR;
+                /* the pitch path through the phrase */
+                float f;
+                if (t < 0.35f) f = base * (0.8f + 0.55f * (t / 0.35f));
+                else if (t < 0.62f) f = base * (1.35f - 0.25f * sinf((t - 0.35f) / 0.27f * PI_F) + 0.25f * (t - 0.35f) / 0.27f);
+                else if (t < 1.2f) f = base * (1.6f - 0.15f * ((t - 0.62f) / 0.58f));
+                else f = base * (1.45f - 0.7f * ((t - 1.2f) / 0.7f));
+                f *= 1.0f + 0.018f * sinf(t * 2 * PI_F * 6.5f) * (t > 0.6f ? 1.0f : 0.3f);
+                phase += f / SR;
+                float gate = (t < 0.33f || (t > 0.37f && t < 1.9f)) ? 1.0f : 0.15f;
+                float e = fminf(t / 0.04f, 1.0f) * fminf((2.0f - t) / 0.15f, 1.0f) * gate;
+                if (e < 0) e = 0;
+                svf(&breath, rnd(), f, 0.08f);
+                d[i] = (sinf(2 * PI_F * phase) * 0.85f + 0.12f * sinf(4 * PI_F * phase) + breath.bp * 0.35f) * e;
+            }
+        }
+        b = &sfx[SFX_WALRUS_GRUNT][v];
+        d = new_buffer(b, 0.9f);
+        add_voice(d, b->len, 95 + r * 20, 60, 380, 0.45f, 0.03f, 0.3f);
+        b = &sfx[SFX_DOLPHIN][v];
+        d = new_buffer(b, 1.0f);
+        for (int c = 0; c < 12; c++)
+            add_bell(d + (int)(c * 0.035f * SR), (int)(0.02f * SR), 3000 + rnd01() * 2000, CLICKS, 3, 0.4f, 0.004f);
+        add_glide(d + (int)(0.45f * SR), (int)(0.4f * SR), 5000 + r * 2000, 9000, 0.3f, 0.5f, 0.02f, 0.2f, 0.03f);
+        b = &sfx[SFX_OAR][v];
+        d = new_buffer(b, 0.7f);
+        add_swell(d, b->len, 300, 2200, 0.8f, 0.25f);
+        add_creak(d, (int)(0.3f * SR), 120 + r * 30, 700, 0.35f, 0.1f);
+        b = &sfx[SFX_BOAT_CREAK][v];
+        d = new_buffer(b, 1.0f);
+        add_creak(d, b->len, 85 + r * 30, 600 + r * 200, 0.9f, 0.14f);
+        b = &sfx[SFX_CAST_LINE][v];
+        d = new_buffer(b, 0.9f);
+        add_whoosh(d, (int)(0.35f * SR), 800, 3500, 0.6f, 1.0f);
+        for (int c = 0; c < 14; c++)
+            add_bell(d + (int)((0.3f + c * 0.03f) * SR), (int)(0.02f * SR), 2800, CLICKS, 3, 0.25f, 0.005f);
+        b = &sfx[SFX_REEL][v];
+        d = new_buffer(b, 0.35f);
+        for (int c = 0; c < 8; c++)
+            add_bell(d + (int)(c * 0.04f * SR), (int)(0.03f * SR), 2400 + r * 400, CLICKS, 3, 0.35f, 0.006f);
+        b = &sfx[SFX_BITE][v];
+        d = new_buffer(b, 0.5f);
+        add_glide(d, b->len, 700 + r * 200, 180, 0.15f, 0.9f, 0.002f, 0.08f, 0);
+        add_swell(d, b->len, 400, 3000, 0.5f, 0.1f);
+        b = &sfx[SFX_CATCH][v];
+        d = new_buffer(b, 1.2f);
+        {
+            static const float notes[4] = { 72, 76, 79, 84 };
+            for (int n = 0; n < 4; n++)
+                add_bell(d + (int)(n * 0.1f * SR), b->len - (int)(n * 0.1f * SR), mtof(notes[n] + (v % 2) * 2), BELL, 4, 0.4f, 0.4f);
+        }
+        b = &sfx[SFX_LINE_SNAP][v];
+        d = new_buffer(b, 0.6f);
+        add_glide(d, b->len, 1800, 500, 0.3f, 0.6f, 0.001f, 0.15f, 0.02f);
+        for (int i = 0; i < 800; i++)
+            d[i] += rnd() * (1.0f - i / 800.0f);
+        b = &sfx[SFX_JELLY_STING][v];
+        d = new_buffer(b, 0.5f);
+        {
+            float phase = 0;
+            for (int i = 0; i < b->len; i++) {
+                float t = (float)i / SR;
+                phase += (220 + rnd() * 90) / SR;
+                d[i] = ((phase - floorf(phase)) * 2 - 1 + rnd() * 0.5f) * env(t, 0.002f, 0.1f);
+            }
+        }
+        b = &sfx[SFX_SHARK_BITE][v];
+        d = new_buffer(b, 0.7f);
+        add_glide(d, b->len, 110, 45, 0.2f, 1.2f, 0.002f, 0.2f, 0);
+        for (int i = 0; i < 6000; i++)
+            d[i] += rnd() * 0.8f * (1.0f - i / 6000.0f);
+        b = &sfx[SFX_CRAB][v];
+        d = new_buffer(b, 0.4f);
+        for (int c = 0; c < 4; c++)
+            add_bell(d + (int)(c * 0.07f * SR), (int)(0.05f * SR), 1400 + rnd01() * 800, CLICKS, 3, 0.5f, 0.01f);
+        /* the Conch of the Deep: a long, low, breathy horn */
+        b = &sfx[SFX_CONCH][v];
+        d = new_buffer(b, 3.2f);
+        {
+            Svf f = {0}, f2 = {0};
+            float phase = 0;
+            for (int i = 0; i < b->len; i++) {
+                float t = (float)i / SR;
+                float fr = 98.0f * (1.0f + 0.01f * sinf(t * 2 * PI_F * 4.5f)) * (1.0f + 0.03f * fminf(t, 0.5f));
+                phase += fr / SR;
+                float saw = 2 * (phase - floorf(phase)) - 1 + rnd() * 0.15f;
+                svf(&f, saw, 520, 0.2f);
+                svf(&f2, saw, 1100, 0.3f);
+                float e = fminf(t / 0.4f, 1.0f) * fminf((3.2f - t) / 0.8f, 1.0f);
+                d[i] = (f.bp + f2.bp * 0.4f) * e;
+            }
+        }
+        b = &sfx[SFX_WHIRLPOOL][v];
+        d = new_buffer(b, 4.5f);
+        {
+            Svf f = {0};
+            for (int i = 0; i < b->len; i++) {
+                float t = (float)i / SR;
+                svf(&f, rnd(), 250 + 600 * (0.5f + 0.5f * sinf(t * 7.0f)) + t * 200, 0.3f);
+                d[i] = f.bp * sinf(PI_F * t / 4.5f) * 1.5f;
+            }
+            add_glide(d, b->len, 60, 35, 4.0f, 0.6f, 0.5f, 2.5f, 0.02f);
+        }
+
+        /* ---- people and things ---- */
+        b = &sfx[SFX_SHELLS][v];
+        d = new_buffer(b, 0.5f);
+        for (int c = 0; c < 5; c++) {
+            int st = (int)(rnd01() * 0.25f * SR);
+            add_bell(d + st, b->len - st, 2500 + rnd01() * 2500, CLICKS, 3, 0.4f, 0.03f);
+        }
+        b = &sfx[SFX_BUY][v];
+        d = new_buffer(b, 1.0f);
+        add_bell(d, b->len, 2100, BELL, 4, 0.6f, 0.4f);
+        add_bell(d + (int)(0.12f * SR), b->len - (int)(0.12f * SR), 2800, BELL, 4, 0.6f, 0.5f);
+        add_glide(d + (int)(0.25f * SR), (int)(0.2f * SR), 140, 80, 0.1f, 0.6f, 0.002f, 0.06f, 0);
+        b = &sfx[SFX_QUEST][v];
+        d = new_buffer(b, 1.2f);
+        {
+            static const float notes[3] = { 74, 79, 86 };
+            for (int n = 0; n < 3; n++)
+                add_bell(d + (int)(n * 0.12f * SR), b->len - (int)(n * 0.12f * SR), mtof(notes[n]), BELL, 4, 0.45f, 0.45f);
+        }
+        b = &sfx[SFX_QUEST_DONE][v];
+        d = new_buffer(b, 2.2f);
+        {
+            static const float notes[6] = { 60, 64, 67, 72, 67, 72 };
+            for (int n = 0; n < 6; n++) {
+                int st = (int)(n * 0.14f * SR);
+                add_voice(d + st, (int)(0.3f * SR), mtof(notes[n]), mtof(notes[n]), 1400, 0.05f, 0.02f, n == 5 ? 0.5f : 0.12f);
+                add_bell(d + st, b->len - st, mtof(notes[n] + 12), BELL, 4, 0.25f, 0.6f);
+            }
+        }
+        /* a great bronze bell: hum, prime, tierce, quint and nominal */
+        b = &sfx[SFX_BELL][v];
+        d = new_buffer(b, 5.0f);
+        {
+            static const float partials[6] = { 0.5f, 1.0f, 1.19f, 1.5f, 2.0f, 2.52f };
+            add_bell(d, b->len, 196, partials, 6, 1.0f, 3.5f);
+            for (int i = 0; i < 1200; i++)
+                d[i] += rnd() * 0.3f * (1.0f - i / 1200.0f);
+        }
+        b = &sfx[SFX_CHIME][v];
+        d = new_buffer(b, 2.0f);
+        add_bell(d, b->len, 880, BELL, 4, 0.7f, 1.2f);
+        b = &sfx[SFX_LEVER][v];
+        d = new_buffer(b, 0.6f);
+        add_creak(d, (int)(0.35f * SR), 160, 900, 0.5f, 0.1f);
+        add_glide(d + (int)(0.35f * SR), (int)(0.2f * SR), 130, 70, 0.1f, 1.0f, 0.002f, 0.06f, 0);
+        add_bell(d + (int)(0.35f * SR), (int)(0.2f * SR), 700, PLATE, 5, 0.3f, 0.05f);
+        b = &sfx[SFX_PLATE][v];
+        d = new_buffer(b, 0.6f);
+        add_glide(d, b->len, 120, 70, 0.1f, 1.0f, 0.002f, 0.08f, 0);
+        add_bell(d, b->len, 1320, BELL, 4, 0.3f, 0.3f);
+        b = &sfx[SFX_GATE][v];
+        d = new_buffer(b, 3.5f);
+        {
+            Svf f = {0};
+            float lp = 0;
+            for (int i = 0; i < (int)(3.0f * SR); i++) {
+                float t = (float)i / SR;
+                svf(&f, rnd(), 160 + 120 * sinf(t * 19.0f), 0.2f);
+                d[i] += onepole(&lp, f.bp, 800) * 2.2f * sinf(PI_F * t / 3.0f);
+            }
+            add_glide(d + (int)(2.9f * SR), (int)(0.6f * SR), 70, 35, 0.3f, 1.5f, 0.002f, 0.25f, 0);
+        }
+        b = &sfx[SFX_PAGE][v];
+        d = new_buffer(b, 0.35f);
+        {
+            Svf f = {0};
+            for (int i = 0; i < b->len; i++) {
+                float t = (float)i / SR;
+                svf(&f, rnd(), 4000 + 1500 * sinf(t * 90.0f), 0.8f);
+                d[i] = f.bp * sinf(PI_F * t / 0.35f) * (0.6f + 0.4f * sinf(t * 60.0f));
+            }
+        }
+        b = &sfx[SFX_EQUIP][v];
+        d = new_buffer(b, 0.6f);
+        add_bell(d, b->len, 620 + r * 200, PLATE, 5, 0.6f, 0.15f);
+        add_bell(d + (int)(0.08f * SR), b->len - (int)(0.08f * SR), 950 + r * 200, PLATE, 5, 0.4f, 0.1f);
+        b = &sfx[SFX_DIG][v];
+        d = new_buffer(b, 0.5f);
+        gen_noise_hit(b, 0.5f, 1800, 0.8f, 0.02f, 0.12f, true);
+        add_glide(b->data, b->len, 110, 60, 0.1f, 0.8f, 0.002f, 0.08f, 0);
+        b = &sfx[SFX_DETECTOR][v];
+        d = new_buffer(b, 0.1f);
+        add_glide(d, b->len, 1800, 1800, 0.1f, 1.0f, 0.003f, 0.06f, 0);
+        /* the ukulele: a bright little strummed ditty, C, A minor, F, G */
+        b = &sfx[SFX_UKULELE][v];
+        d = new_buffer(b, 2.8f);
+        {
+            static const float chords[4][4] = { { 67, 60, 64, 72 }, { 69, 60, 64, 69 }, { 69, 60, 65, 69 }, { 67, 62, 67, 71 } };
+            for (int c = 0; c < 4; c++)
+                for (int st = 0; st < 2; st++)
+                    for (int k = 0; k < 4; k++) {
+                        int at = (int)((c * 0.6f + st * 0.3f + k * 0.012f) * SR);
+                        if (at < b->len)
+                            add_ks(d + at, b->len - at, mtof(chords[(c + v) % 4][k]), st ? 0.25f : 0.35f, 0.9f);
+                    }
+        }
+        b = &sfx[SFX_GNOME][v];
+        d = new_buffer(b, 0.4f);
+        add_bell(d, b->len, 1900 + r * 400, PLATE, 5, 0.6f, 0.05f);
+        b = &sfx[SFX_SHOP_BELL][v];
+        d = new_buffer(b, 1.0f);
+        for (int c = 0; c < 4; c++)
+            add_bell(d + (int)(c * 0.07f * SR), b->len - (int)(c * 0.07f * SR), 2600 + (c % 2) * 400, BELL, 4, 0.35f, 0.35f);
+
+        /* ---- Old Ember and the weather ---- */
+        b = &sfx[SFX_RUMBLE][v];
+        d = new_buffer(b, 4.0f);
+        add_swell(d, b->len, 40, 160, 3.0f, 0.4f);
+        add_glide(d, b->len, 38 + r * 8, 32, 3.0f, 0.8f, 0.8f, 2.0f, 0.03f);
+        b = &sfx[SFX_ERUPTION][v];
+        d = new_buffer(b, 7.0f);
+        {
+            float lp1 = 0, lp2 = 0;
+            for (int i = 0; i < b->len; i++) {
+                float t = (float)i / SR;
+                float cutoff = 90 + 4000 * expf(-t * 1.2f);
+                float n = onepole(&lp2, onepole(&lp1, rnd(), cutoff), cutoff);
+                d[i] = n * 4.0f * env(t, 0.01f, 2.5f) + (i < 1500 ? rnd() * (1.0f - i / 1500.0f) : 0.0f);
+            }
+            add_glide(d, b->len, 45, 22, 3.0f, 1.5f, 0.01f, 2.5f, 0);
+        }
+        b = &sfx[SFX_LAVA_BOMB][v];
+        d = new_buffer(b, 1.6f);
+        add_whoosh(d, (int)(0.5f * SR), 1500, 300, 0.5f, 0.6f);
+        {
+            float lp = 0;
+            for (int i = (int)(0.5f * SR); i < b->len; i++) {
+                float t = (float)i / SR - 0.5f;
+                d[i] += onepole(&lp, rnd(), 900 * expf(-t * 2.0f) + 100) * 2.5f * env(t, 0.003f, 0.4f);
+            }
+        }
+        gen_noise_hit(&sfx[SFX_HISS][v], 1.4f, 6000, 1.0f, 0.1f, 0.5f, true);
+        b = &sfx[SFX_COUGH][v];
+        d = new_buffer(b, 1.0f);
+        for (int c = 0; c < 3; c++) {
+            Svf f = {0};
+            int st = (int)((c * 0.28f + rnd01() * 0.04f) * SR);
+            for (int i = 0; i < (int)(0.18f * SR) && st + i < b->len; i++) {
+                float t = (float)i / SR;
+                svf(&f, rnd(), 700 + r * 200, 0.6f);
+                d[st + i] += f.bp * env(t, 0.005f, 0.06f) * 1.5f;
+            }
+        }
+        b = &sfx[SFX_HAILSTONE][v];
+        d = new_buffer(b, 0.4f);
+        for (int c = 0; c < 8; c++) {
+            int st = (int)(rnd01() * 0.3f * SR);
+            add_bell(d + st, b->len - st, 3000 + rnd01() * 3000, CLICKS, 3, 0.3f, 0.006f);
+        }
+        b = &sfx[SFX_GUST][v];
+        d = new_buffer(b, 2.5f);
+        add_whoosh(d, b->len, 200, 900 + r * 400, 0.6f, 1.0f);
+        b = &sfx[SFX_REBIRTH][v];
+        d = new_buffer(b, 4.0f);
+        {
+            static const float notes[5] = { 60, 67, 72, 76, 79 };
+            for (int n = 0; n < 5; n++)
+                add_bell(d + (int)(n * 0.3f * SR), b->len - (int)(n * 0.3f * SR), mtof(notes[n]), BELL, 4, 0.35f, 1.6f);
+            for (int c = 0; c < 20; c++) {
+                int st = (int)(rnd01() * 3.0f * SR);
+                add_bell(d + st, b->len - st, 3000 + rnd01() * 4000, BELL, 4, 0.08f, 0.2f);
+            }
+        }
+
+        /* ---- the new creatures ---- */
+        b = &sfx[SFX_BAT][v];
+        d = new_buffer(b, 0.3f);
+        for (int c = 0; c < 3; c++)
+            add_glide(d + (int)(c * 0.07f * SR), (int)(0.05f * SR), 5500 + r * 1500, 7000, 0.04f, 0.5f, 0.003f, 0.02f, 0);
+        b = &sfx[SFX_IMP][v];
+        d = new_buffer(b, 0.8f);
+        for (int c = 0; c < 5; c++)
+            add_voice(d + (int)(c * 0.11f * SR), (int)(0.09f * SR), 520 + r * 100 + c * 30, 460, 2200, 0.5f, 0.005f, 0.035f);
+        for (int i = 0; i < b->len; i++)
+            if (rnd01() < 0.002f)
+                d[i] += rnd();
+        b = &sfx[SFX_WRAITH][v];
+        d = new_buffer(b, 2.2f);
+        {
+            float phase = 0;
+            for (int i = 0; i < b->len; i++) {
+                float t = (float)i / SR;
+                float f = (260 + r * 60) * (1.0f + 0.25f * sinf(t * 1.4f)) * (1.0f + 0.01f * sinf(t * 30.0f));
+                phase += f / SR;
+                d[i] = sinf(2 * PI_F * phase) * sinf(PI_F * t / 2.2f) * (0.7f + 0.3f * sinf(t * 9.0f));
+            }
+        }
+        b = &sfx[SFX_EEL][v];
+        d = new_buffer(b, 0.6f);
+        gen_noise_hit(b, 0.6f, 5000, 1.0f, 0.02f, 0.2f, true);
+        add_bell(b->data + (int)(0.25f * SR), (int)(0.1f * SR), 1100, CLICKS, 3, 0.8f, 0.02f);
+        b = &sfx[SFX_KING_ROAR][v];
+        d = new_buffer(b, 2.5f);
+        add_voice(d, b->len, 75 + r * 10, 48, 420, 0.5f, 0.1f, 1.0f);
+        add_swell(d, b->len, 80, 400, 1.2f, 0.3f);
+        b = &sfx[SFX_DROWNED][v];
+        d = new_buffer(b, 0.7f);
+        for (int c = 0; c < 4; c++)
+            add_bell(d + (int)(c * 0.08f * SR), (int)(0.05f * SR), 800 + rnd01() * 900, CLICKS, 3, 0.4f, 0.015f);
+        for (int c = 0; c < 4; c++) {
+            int st = (int)(rnd01() * 0.5f * SR);
+            add_glide(d + st, b->len - st, 200, 500, 0.05f, 0.3f, 0.002f, 0.04f, 0);
+        }
+
+        /* ---- the new spells ---- */
+        b = &sfx[SFX_CAST_TIDE][v];
+        d = new_buffer(b, 1.8f);
+        add_swell(d, b->len, 200, 4500, 1.6f, 0.35f);
+        b = &sfx[SFX_CAST_METEOR][v];
+        d = new_buffer(b, 1.8f);
+        add_whoosh(d, b->len, 150, 2500, 0.4f, 0.9f);
+        add_glide(d, b->len, 60, 140, 1.5f, 0.6f, 0.3f, 0.8f, 0.03f);
+        b = &sfx[SFX_CAST_SPIKES][v];
+        d = new_buffer(b, 1.0f);
+        for (int c = 0; c < 8; c++) {
+            int st = (int)(c * 0.1f * SR);
+            add_glide(d + st, b->len - st, 140, 60, 0.08f, 0.7f, 0.002f, 0.06f, 0);
+            for (int i = 0; i < 600 && st + i < b->len; i++)
+                d[st + i] += rnd() * 0.5f * (1.0f - i / 600.0f);
+        }
+        b = &sfx[SFX_CAST_SHADOW][v];
+        d = new_buffer(b, 1.4f);
+        add_whoosh(d, b->len, 2500, 150, 0.5f, 1.0f);
+        add_glide(d, b->len, 220, 110, 1.2f, 0.4f, 0.3f, 0.6f, 0.02f);
+        b = &sfx[SFX_CAST_GALE][v];
+        d = new_buffer(b, 2.0f);
+        {
+            Svf f = {0};
+            for (int i = 0; i < b->len; i++) {
+                float t = (float)i / SR;
+                svf(&f, rnd(), 500 + 900 * (0.5f + 0.5f * sinf(t * 11.0f)), 0.35f);
+                d[i] = f.bp * sinf(PI_F * t / 2.0f) * 1.4f;
+            }
+        }
+        b = &sfx[SFX_CAST_STARS][v];
+        d = new_buffer(b, 1.2f);
+        {
+            static const float notes[5] = { 84, 88, 91, 95, 96 };
+            for (int n = 0; n < 5; n++)
+                add_bell(d + (int)(n * 0.06f * SR), b->len - (int)(n * 0.06f * SR), mtof(notes[n]), BELL, 4, 0.3f, 0.3f);
+        }
+        b = &sfx[SFX_CAST_GILLS][v];
+        d = new_buffer(b, 1.5f);
+        for (int c = 0; c < 14; c++) {
+            int st = (int)(rnd01() * 1.2f * SR);
+            add_glide(d + st, b->len - st, 300 + rnd01() * 300, 1200, 0.06f, 0.3f, 0.003f, 0.05f, 0);
+        }
+        add_bell(d, b->len, mtof(84), BELL, 4, 0.3f, 0.9f);
+
         for (int s = 0; s < SFX_COUNT; s++)
             if (sfx[s][v].data)
                 normalize(&sfx[s][v]);
@@ -539,8 +990,28 @@ typedef struct {
 
 typedef struct {
     float freq, phase, mod_phase, t, gain, pan;
+    float ratio, decay;     /* 0 = the mood's usual bell */
     bool on;
-} Bell;                     /* FM bell: bells, music box */
+} Bell;                     /* FM bell: bells, music box, kalimba, steel drum */
+
+/* a sustained, one-note-at-a-time lead with its own timbre: fiddle, accordion, whistle,
+ * glass harmonica, brass */
+typedef struct {
+    float freq, target_freq, phase, phase2, amp, target, vib_phase, lp, flick;
+    Svf f1, f2;
+} Mono;
+
+/* a short chord stab (the accordion's "pah") */
+typedef struct {
+    float freq, phase, env;
+    Svf f;
+} Stab;
+
+/* one drum of the kit */
+typedef struct {
+    float env, phase, freq, vel;
+    Svf f;
+} Drum;
 
 /* Freeverb-style reverb: parallel combs, then series allpasses, per channel */
 #define COMBS 8
@@ -586,7 +1057,15 @@ static float reverb_channel(Reverb *r, int ch, float in, float feedback)
     return out;
 }
 
-typedef enum { LEAD_HARP, LEAD_PIANO, LEAD_FLUTE, LEAD_BELLS, LEAD_MUSICBOX } Lead;
+typedef enum {
+    LEAD_HARP, LEAD_PIANO, LEAD_FLUTE, LEAD_BELLS, LEAD_MUSICBOX,
+    LEAD_GUITAR, LEAD_FIDDLE, LEAD_ACCORDION, LEAD_WHISTLE, LEAD_GLASS, LEAD_KALIMBA, LEAD_BRASS, LEAD_STEEL,
+} Lead;
+
+/* the drum patterns of each genre */
+typedef enum { RHY_NONE, RHY_BOSSA, RHY_JIG, RHY_SHANTY, RHY_TAIKO, RHY_LOFI, RHY_REEL, RHY_FESTIVAL, RHY_HEARTBEAT } Rhythm;
+/* what the accompaniment does */
+typedef enum { COMP_NONE, COMP_STRUM, COMP_OOMPAH, COMP_ARP, COMP_WALK } Comp;
 
 typedef struct {
     int tonic;              /* MIDI note of the scale's tonic */
@@ -599,6 +1078,12 @@ typedef struct {
     int lead_octave;        /* shifts the melody up or down */
     float pad, bass, choir, drone;  /* how much of each layer */
     float reverb;           /* comb feedback: bigger = longer halls */
+    /* the coast's moods add these (the ruins' moods leave them zero) */
+    Rhythm rhythm;
+    float drums;            /* how loud the kit is */
+    Comp comp;
+    int chords_b[4][5];     /* a second section, played every other time round (0 = none) */
+    bool whales;            /* whale song drifting in the distance */
 } MoodDef;
 
 static const MoodDef MOODS[MOOD_COUNT] = {
@@ -623,6 +1108,72 @@ static const MoodDef MOODS[MOOD_COUNT] = {
     [MOOD_LIBRARY] = { 57, { 0, 2, 3, 5, 7, 9, 10 },        /* A dorian music box: dust and old pages */
         { { 57, 60, 64, 67, 0 }, { 55, 59, 62, 0, 0 }, { 53, 57, 60, 64, 0 }, { 52, 55, 59, 62, 0 } },
         60, 0.42f, 16, LEAD_MUSICBOX, 12, 0.6f, 0.3f, 0.0f, 0.0f, 0.84f },
+
+    /* ---- the coast ---- */
+    [MOOD_BEACH] = { 65, { 0, 2, 4, 5, 7, 9, 11 },          /* bossa nova in F: nylon strings and a brushed shaker */
+        { { 53, 57, 60, 64, 0 }, { 55, 58, 62, 65, 0 }, { 57, 60, 64, 67, 0 }, { 48, 52, 55, 58, 62 } },
+        88, 0.45f, 16, LEAD_GUITAR, 0, 0.35f, 1.0f, 0.0f, 0.0f, 0.8f,
+        RHY_BOSSA, 0.8f, COMP_STRUM,
+        { { 50, 53, 57, 60, 64 }, { 55, 59, 62, 65, 0 }, { 52, 55, 59, 62, 0 }, { 57, 61, 64, 67, 0 } } },
+    [MOOD_VILLAGE] = { 62, { 0, 2, 4, 5, 7, 9, 10 },        /* a D mixolydian jig: fiddle over a drone */
+        { { 50, 54, 57, 62, 0 }, { 48, 52, 55, 60, 0 }, { 55, 59, 62, 0, 0 }, { 50, 54, 57, 62, 0 } },
+        126, 0.75f, 12, LEAD_FIDDLE, 0, 0.2f, 0.6f, 0.0f, 0.55f, 0.8f,
+        RHY_JIG, 0.9f, COMP_NONE,
+        { { 55, 59, 62, 0, 0 }, { 48, 52, 55, 0, 0 }, { 57, 61, 64, 0, 0 }, { 50, 54, 57, 62, 0 } } },
+    [MOOD_MARINA] = { 57, { 0, 2, 3, 5, 7, 8, 10 },         /* a sea shanty: accordion oom-pah and a tin whistle */
+        { { 45, 48, 52, 57, 0 }, { 43, 47, 50, 55, 0 }, { 41, 45, 48, 53, 0 }, { 40, 44, 47, 52, 0 } },
+        100, 0.55f, 12, LEAD_WHISTLE, 12, 0.0f, 1.0f, 0.0f, 0.0f, 0.8f,
+        RHY_SHANTY, 0.8f, COMP_OOMPAH,
+        { { 41, 45, 48, 53, 0 }, { 48, 52, 55, 60, 0 }, { 43, 47, 50, 55, 0 }, { 45, 48, 52, 57, 0 } } },
+    [MOOD_OCEAN] = { 64, { 0, 2, 4, 6, 7, 9, 11 },          /* out on the open water: a slow lydian harp waltz */
+        { { 52, 56, 59, 63, 0 }, { 54, 57, 61, 64, 0 }, { 56, 59, 63, 66, 0 }, { 57, 61, 64, 68, 0 } },
+        70, 0.3f, 12, LEAD_HARP, 0, 1.0f, 0.7f, 0.35f, 0.0f, 0.88f,
+        RHY_NONE, 0.0f, COMP_ARP, { { 0 } }, true },
+    [MOOD_UNDERSEA] = { 61, { 0, 2, 4, 6, 7, 9, 11 },       /* the Drowned Court: glass bells, choir and whale song */
+        { { 49, 53, 56, 60, 63 }, { 51, 54, 58, 61, 0 }, { 54, 58, 61, 65, 0 }, { 47, 51, 54, 58, 61 } },
+        46, 0.28f, 16, LEAD_GLASS, 12, 0.8f, 0.5f, 1.0f, 0.35f, 0.93f,
+        RHY_NONE, 0.0f, COMP_NONE, { { 0 } }, true },
+    [MOOD_VOLCANO] = { 52, { 0, 1, 4, 5, 7, 8, 10 },        /* E phrygian dominant: taiko and low brass */
+        { { 40, 44, 47, 0, 0 }, { 41, 45, 48, 0, 0 }, { 40, 44, 47, 52, 0 }, { 38, 41, 45, 0, 0 } },
+        72, 0.3f, 16, LEAD_BRASS, -12, 0.4f, 1.0f, 0.3f, 1.0f, 0.86f,
+        RHY_TAIKO, 1.0f, COMP_NONE },
+    [MOOD_TAVERN] = { 67, { 0, 2, 4, 5, 7, 9, 11 },         /* the Salted Eel: a quick reel to dance to */
+        { { 55, 59, 62, 67, 0 }, { 48, 52, 55, 60, 0 }, { 50, 54, 57, 62, 0 }, { 55, 59, 62, 0, 0 } },
+        144, 0.85f, 16, LEAD_FIDDLE, 0, 0.0f, 0.9f, 0.0f, 0.0f, 0.78f,
+        RHY_REEL, 0.8f, COMP_OOMPAH,
+        { { 52, 55, 59, 64, 0 }, { 48, 52, 55, 60, 0 }, { 50, 54, 57, 62, 0 }, { 55, 59, 62, 67, 0 } } },
+    [MOOD_SHOP] = { 62, { 0, 2, 3, 5, 7, 9, 10 },           /* the Curious Clam: lazy lo-fi with a kalimba */
+        { { 50, 53, 57, 60, 64 }, { 55, 59, 62, 65, 69 }, { 48, 52, 55, 59, 62 }, { 57, 61, 64, 67, 0 } },
+        76, 0.4f, 16, LEAD_KALIMBA, 12, 0.7f, 1.0f, 0.0f, 0.0f, 0.8f,
+        RHY_LOFI, 0.75f, COMP_NONE },
+    [MOOD_ANCIENT] = { 60, { 0, 2, 4, 6, 8, 10, 12 },       /* whole tones: something very old and strange */
+        { { 48, 52, 56, 0, 0 }, { 50, 54, 58, 0, 0 }, { 46, 50, 54, 0, 0 }, { 52, 56, 60, 0, 0 } },
+        40, 0.25f, 16, LEAD_GLASS, 0, 0.5f, 0.4f, 0.6f, 0.8f, 0.94f,
+        RHY_HEARTBEAT, 0.5f, COMP_NONE },
+    [MOOD_ERUPTION] = { 52, { 0, 1, 4, 5, 7, 8, 10 },       /* Old Ember wakes */
+        { { 40, 44, 47, 0, 0 }, { 41, 45, 48, 0, 0 }, { 40, 43, 47, 0, 0 }, { 39, 43, 46, 0, 0 } },
+        132, 0.45f, 8, LEAD_BRASS, -12, 0.4f, 1.0f, 0.6f, 1.0f, 0.84f,
+        RHY_TAIKO, 1.2f, COMP_NONE },
+    [MOOD_FESTIVAL] = { 60, { 0, 2, 4, 5, 7, 9, 11 },       /* the bell is home: a street band */
+        { { 48, 52, 55, 60, 0 }, { 53, 57, 60, 65, 0 }, { 55, 59, 62, 67, 0 }, { 48, 52, 55, 60, 0 } },
+        132, 0.7f, 16, LEAD_STEEL, 12, 0.3f, 1.0f, 0.3f, 0.0f, 0.8f,
+        RHY_FESTIVAL, 0.85f, COMP_OOMPAH,
+        { { 57, 60, 64, 0, 0 }, { 53, 57, 60, 0, 0 }, { 55, 59, 62, 0, 0 }, { 48, 52, 55, 60, 0 } } },
+};
+
+/* drum patterns, one bit per eighth-note step: kick, snare, hats/shaker, low drum
+ * (bodhran/taiko), click (rim/clave), jingles */
+typedef struct { unsigned kick, snare, hat, low, click, jingle; int steps; } Pattern;
+static const Pattern PATTERNS[] = {
+    [RHY_NONE] = { 0, 0, 0, 0, 0, 0, 16 },
+    [RHY_BOSSA] = { 0x0909, 0, 0xFFFF, 0, 0x1449, 0, 16 },
+    [RHY_JIG] = { 0, 0, 0, 0x0FFF, 0, 0, 12 },
+    [RHY_SHANTY] = { 0x0041, 0x0514, 0, 0, 0, 0, 12 },
+    [RHY_TAIKO] = { 0, 0, 0, 0x2521, 0x4044, 0, 16 },
+    [RHY_LOFI] = { 0x0481, 0x1010, 0x5555, 0, 0, 0, 16 },
+    [RHY_REEL] = { 0x0101, 0x1010, 0, 0xFFFF, 0, 0, 16 },
+    [RHY_FESTIVAL] = { 0x1111, 0x1010, 0, 0, 0, 0xFFFF, 16 },
+    [RHY_HEARTBEAT] = { 0x0003, 0, 0, 0, 0, 0, 16 },
 };
 
 typedef struct {
@@ -655,6 +1206,13 @@ static struct {
     int next_pluck;
     PadVoice pad[5];
     Flute flute;
+    Mono mono;
+    Stab stabs[4];
+    int next_stab;
+    Drum kick, snare, hat, low, click, jingle;
+    float crackle_lp;
+    int section;
+    float whale_t, whale_phase, whale_env, whale_f0, whale_f1, whale_len, whale_pos;
     Bell bells[10];
     int next_bell;
     float bass_phase, bass_amp, bass_freq;
@@ -683,6 +1241,17 @@ static struct {
     float rain_lp[2], rain_hp[2], rain_drop, rain_drop_lp;
     float drip_t, drip_phase, drip_freq, drip_env, drip_pan;
     Svf water_f;
+    float surf_t, surf_env, surf_len, surf_lp[2][2], surf_hiss;
+    Svf howl_f;
+    float hail_env;
+    float tor_lp[2];
+    float rumble_lp[2];
+    float lava_t, lava_phase, lava_env, lava_freq;
+    float harb_t, harb_env, harb_freq, harb_phase;
+    float chime_t, chime_phase[3], chime_env[3], chime_freq[3];
+    int chime_next;
+    float bub_t, bub_phase, bub_env, bub_freq;
+    float sub;                  /* smoothed: 1 = head under water */
     float night_mix, rain_mix, shelter, slow;
     float master_lp[2];
 
@@ -717,6 +1286,32 @@ static void ring(float midi, float velocity, float pan)
     *b = (Bell){ .freq = mtof(midi), .gain = velocity * 0.22f, .pan = pan, .on = true };
 }
 
+/* a bell of a particular kind: kalimba tines, steel drums */
+static void ring_ex(float midi, float velocity, float pan, float ratio, float decay)
+{
+    Bell *b = &A.bells[A.next_bell];
+    A.next_bell = (A.next_bell + 1) % 10;
+    *b = (Bell){ .freq = mtof(midi), .gain = velocity * 0.22f, .pan = pan, .ratio = ratio, .decay = decay, .on = true };
+}
+
+static void mono_note(float note, float vel)
+{
+    Mono *m = &A.mono;
+    m->target_freq = mtof(note);
+    if (m->amp < 0.05f)
+        m->freq = m->target_freq;
+    m->target = 0.6f + vel * 0.4f;
+    m->flick = 1.0f;        /* a little grace note up into it */
+}
+
+static void stab(float midi, float vel)
+{
+    Stab *s = &A.stabs[A.next_stab];
+    A.next_stab = (A.next_stab + 1) % 4;
+    s->freq = mtof(midi);
+    s->env = vel;
+}
+
 static void play_lead(const MoodDef *m, float note, float vel, float pan)
 {
     switch (m->lead) {
@@ -733,6 +1328,76 @@ static void play_lead(const MoodDef *m, float note, float vel, float pan)
         break;
     case LEAD_BELLS: ring(note, vel, pan); break;
     case LEAD_MUSICBOX: ring(note + 12, vel, pan); break;
+    case LEAD_GUITAR:
+        pluck(note, vel * 0.9f, pan, false);
+        break;
+    case LEAD_KALIMBA: ring_ex(note, vel * 1.1f, pan, 5.4f, 0.7f); break;
+    case LEAD_STEEL: ring_ex(note, vel * 1.1f, pan, 1.5f, 0.9f); break;
+    case LEAD_FIDDLE: case LEAD_ACCORDION: case LEAD_WHISTLE: case LEAD_GLASS: case LEAD_BRASS:
+        mono_note(note, vel);
+        break;
+    }
+}
+
+static void hit(Drum *d, float vel, float freq)
+{
+    d->env = vel;
+    d->phase = 0.0f;
+    d->freq = freq;
+    d->vel = vel;
+}
+
+/* the kit and the accompaniment, each eighth note */
+static void comp_step(const MoodDef *m, int beat, const int *chord)
+{
+    const Pattern *pt = &PATTERNS[m->rhythm];
+    if (m->rhythm != RHY_NONE) {
+        int k = beat % pt->steps;
+        unsigned bit = 1u << k;
+        float accent = k == 0 ? 1.0f : 0.75f;
+        if (pt->kick & bit) hit(&A.kick, accent, 0);
+        if (pt->snare & bit) hit(&A.snare, accent * 0.8f, 0);
+        if (pt->hat & bit) hit(&A.hat, (k % 2 ? 0.45f : 0.8f), 0);
+        if (pt->low & bit) hit(&A.low, (k % 3 == 0 || k == 0) ? 1.0f : 0.45f, m->rhythm == RHY_TAIKO ? 58.0f : 92.0f);
+        if (pt->click & bit) hit(&A.click, 0.8f, 0);
+        if (pt->jingle & bit) hit(&A.jingle, k % 2 ? 0.4f : 0.7f, 0);
+    }
+    switch (m->comp) {
+    case COMP_STRUM: {
+        /* bossa guitar: chord tones on the syncopated beats */
+        static const unsigned where = 0x4949;
+        if (where & (1u << (beat % 16)))
+            for (int i = 1; i < 5; i++)
+                if (chord[i])
+                    pluck((float)chord[i], 0.22f + 0.05f * i, -0.2f + i * 0.1f, false);
+        if (beat % 4 == 0) {
+            A.bass_freq = mtof(chord[beat % 8 == 0 ? 0 : (chord[2] ? 2 : 0)] - 12);
+            A.bass_amp = 0.9f;
+        }
+        break;
+    }
+    case COMP_OOMPAH: {
+        /* bass on the strong beat, accordion chord on the weak ones */
+        int bar = m->bar_steps == 12 ? 6 : 8;
+        int k = beat % bar;
+        if (k == 0) {
+            A.bass_freq = mtof(chord[(beat / bar) % 2 ? (chord[2] ? 2 : 0) : 0] - 12);
+            A.bass_amp = 1.0f;
+        } else if (k % 2 == 0) {
+            for (int i = 1; i < 4; i++)
+                if (chord[i])
+                    stab((float)chord[i], 0.8f);
+        }
+        break;
+    }
+    case COMP_ARP: {
+        int i = beat % 4;
+        int n = chord[i] ? chord[i] : chord[0];
+        pluck((float)(n + 12), 0.3f, -0.4f + i * 0.25f, false);
+        break;
+    }
+    default:
+        break;
     }
 }
 
@@ -744,16 +1409,23 @@ static void music_step(void)
     if (beat == 0) {
         /* new chord: re-voice the pad, drop in the bass, sometimes arpeggiate */
         A.chord = (A.chord + 1) % 4;
+        if (A.chord == 0 && m->chords_b[0][0])
+            A.section ^= 1;         /* the coast's tunes have a second part */
+        const int (*chords)[5] = A.section && m->chords_b[0][0] ? m->chords_b : m->chords;
         for (int i = 0; i < 5; i++) {
-            int n = m->chords[A.chord][i];
+            int n = chords[A.chord][i];
             A.pad[i].target = n ? 1.0f : 0.0f;
             if (n)
                 A.pad[i].freq = mtof(n);
         }
-        A.bass_freq = mtof(m->chords[A.chord][0] - 12);
+        A.bass_freq = mtof(chords[A.chord][0] - 12);
         A.bass_amp = 1.0f;
-        if (rnd01() < 0.5f && m->lead != LEAD_FLUTE)
+        if (rnd01() < 0.5f && m->lead != LEAD_FLUTE && m->comp == COMP_NONE && m->lead < LEAD_FIDDLE)
             A.arp = 4;
+    }
+    {
+        const int (*chords)[5] = A.section && m->chords_b[0][0] ? m->chords_b : m->chords;
+        comp_step(m, A.step, chords[A.chord]);
     }
     /* palace waltz: the bass again on the second downbeat */
     if (m->bar_steps == 12 && beat == 6)
@@ -761,6 +1433,8 @@ static void music_step(void)
 
     if (A.flute.target > 0.0f && rnd01() < 0.35f)
         A.flute.target = 0.0f;      /* the flute breathes between phrases */
+    if (A.mono.target > 0.0f && rnd01() < (m->lead == LEAD_GLASS ? 0.15f : 0.25f))
+        A.mono.target = 0.0f;
 
     if (A.arp > 0) {
         int n = m->chords[A.chord][(4 - A.arp) % 4];
@@ -779,8 +1453,9 @@ static void music_step(void)
         int note = m->tonic + 12 * (degree / 7) + m->scale[degree % 7];
         if (strong) {
             int best = note, bd = 99;
+            const int (*chords)[5] = A.section && m->chords_b[0][0] ? m->chords_b : m->chords;
             for (int i = 0; i < 5; i++) {
-                int c = m->chords[A.chord][i];
+                int c = chords[A.chord][i];
                 if (!c)
                     continue;
                 for (int o = 12; o <= 24; o += 12) {
@@ -830,12 +1505,12 @@ static void music_sample(float *l, float *r, float rate)
         if (!b->on)
             continue;
         b->t += 1.0f / SR;
-        float e = expf(-b->t / bell_decay);
+        float e = expf(-b->t / (b->decay > 0.0f ? b->decay : bell_decay));
         if (e < 0.001f) {
             b->on = false;
             continue;
         }
-        b->mod_phase += b->freq * 3.5f * rate / SR;
+        b->mod_phase += b->freq * (b->ratio > 0.0f ? b->ratio : 3.5f) * rate / SR;
         b->phase += b->freq * rate / SR;
         float s = sinf(2 * PI_F * b->phase + 2.0f * e * sinf(2 * PI_F * b->mod_phase)) * e * b->gain;
         out_l += s * (0.5f - 0.5f * b->pan);
@@ -855,6 +1530,125 @@ static void music_sample(float *l, float *r, float rate)
         float s = (sinf(2 * PI_F * fl->phase) + 0.12f * sinf(4 * PI_F * fl->phase) + breath) * fl->amp * 0.12f;
         out_l += s * 0.55f;
         out_r += s * 0.45f;
+    }
+
+    /* the sustained leads: fiddle, accordion, whistle, glass harmonica, brass */
+    Mono *mo = &A.mono;
+    float attack = m->lead == LEAD_GLASS ? 0.3f : m->lead == LEAD_BRASS ? 0.06f : 0.025f;
+    mo->amp += (mo->target - mo->amp) * (1.0f / (SR * (mo->target > mo->amp ? attack : 0.09f)));
+    if (mo->amp > 1e-4f && m->lead >= LEAD_FIDDLE && m->lead <= LEAD_BRASS) {
+        mo->freq += (mo->target_freq - mo->freq) * (1.0f / (SR * 0.03f));
+        mo->flick *= 1.0f - 1.0f / (SR * 0.05f);
+        mo->vib_phase += (m->lead == LEAD_ACCORDION ? 6.0f : 5.3f) / SR;
+        float vib = 1.0f + (m->lead == LEAD_FIDDLE ? 0.012f : m->lead == LEAD_GLASS ? 0.004f : 0.006f) * sinf(2 * PI_F * mo->vib_phase);
+        float f = mo->freq * vib * (1.0f + (m->lead == LEAD_WHISTLE ? 0.06f : 0.0f) * mo->flick);
+        mo->phase += f * rate / SR;
+        mo->phase -= floorf(mo->phase);
+        mo->phase2 += f * 1.004f * rate / SR;
+        mo->phase2 -= floorf(mo->phase2);
+        float sv = 0.0f;
+        switch (m->lead) {
+        case LEAD_FIDDLE: {
+            float saw = 2 * mo->phase - 1;
+            svf(&mo->f1, saw, 900, 0.3f);
+            svf(&mo->f2, saw, 2700, 0.4f);
+            sv = (mo->f1.bp * 1.2f + mo->f2.bp * 0.6f) * 0.9f;
+            break;
+        }
+        case LEAD_ACCORDION: {
+            float p1 = mo->phase < 0.3f ? 1.0f : -0.4f, p2 = mo->phase2 < 0.3f ? 1.0f : -0.4f;
+            sv = onepole(&mo->lp, (p1 + p2) * 0.5f, 2600) * (0.8f + 0.2f * sinf(2 * PI_F * mo->vib_phase));
+            break;
+        }
+        case LEAD_WHISTLE:
+            svf(&mo->f1, rnd(), f, 0.05f);
+            sv = sinf(2 * PI_F * mo->phase) + 0.08f * sinf(4 * PI_F * mo->phase) + mo->f1.bp * 0.25f;
+            break;
+        case LEAD_GLASS:
+            sv = (sinf(2 * PI_F * mo->phase) + 0.3f * sinf(4 * PI_F * mo->phase2)) * (0.8f + 0.2f * sinf(A.wind_t * 25.0f));
+            break;
+        case LEAD_BRASS: {
+            float saw = (2 * mo->phase - 1) + (2 * mo->phase2 - 1);
+            sv = onepole(&mo->lp, saw * 0.5f, 250 + 1800 * mo->amp);
+            break;
+        }
+        default:
+            break;
+        }
+        float s2 = sv * mo->amp * 0.1f;
+        out_l += s2 * 0.5f;
+        out_r += s2 * 0.5f;
+    }
+    /* accordion stabs */
+    for (int i = 0; i < 4; i++) {
+        Stab *st = &A.stabs[i];
+        if (st->env < 1e-4f)
+            continue;
+        st->env *= 1.0f - 1.0f / (SR * 0.22f);
+        st->phase += st->freq * rate / SR;
+        st->phase -= floorf(st->phase);
+        svf(&st->f, (st->phase < 0.35f ? 1.0f : -0.5f), 2200, 0.5f);
+        float v = st->f.lp * st->env * 0.05f;
+        out_l += v * 0.45f;
+        out_r += v * 0.55f;
+    }
+
+    /* the drum kit */
+    if (m->rhythm != RHY_NONE) {
+        float dk = 0.0f;
+        Drum *d = &A.kick;
+        d->env *= 1.0f - 1.0f / (SR * 0.14f);
+        d->phase += (48 + 110 * d->env * d->env) / SR;
+        dk += sinf(2 * PI_F * d->phase) * d->env * 0.5f;
+        d = &A.snare;
+        d->env *= 1.0f - 1.0f / (SR * (m->rhythm == RHY_LOFI ? 0.12f : 0.08f));
+        svf(&d->f, rnd(), m->rhythm == RHY_LOFI ? 1800 : 2600, 0.6f);
+        dk += (d->f.bp * 0.7f + sinf(2 * PI_F * 190 * d->env) * 0.15f) * d->env * 0.45f;
+        d = &A.hat;
+        d->env *= 1.0f - 1.0f / (SR * (m->rhythm == RHY_BOSSA ? 0.045f : 0.022f));
+        svf(&d->f, rnd(), 7500, 0.5f);
+        dk += (rnd() - d->f.lp) * d->env * 0.06f;
+        d = &A.low;
+        d->env *= 1.0f - 1.0f / (SR * (m->rhythm == RHY_TAIKO ? 0.45f : 0.16f));
+        d->phase += d->freq * (0.75f + 0.4f * d->env) / SR;
+        svf(&d->f, rnd(), 300, 0.5f);
+        dk += (sinf(2 * PI_F * d->phase) + d->f.lp * 0.4f * d->env) * d->env * (m->rhythm == RHY_TAIKO ? 0.7f : 0.4f);
+        d = &A.click;
+        d->env *= 1.0f - 1.0f / (SR * 0.02f);
+        dk += sinf(2 * PI_F * 1900 * (float)(A.step_clock / SR)) * d->env * 0.12f;
+        d = &A.jingle;
+        d->env *= 1.0f - 1.0f / (SR * 0.06f);
+        svf(&d->f, rnd(), 8000, 0.2f);
+        dk += d->f.bp * d->env * 0.1f;
+        if (m->rhythm == RHY_LOFI)      /* vinyl crackle */
+            dk += (rnd01() < 0.0015f ? rnd() * 0.15f : 0.0f) + onepole(&A.crackle_lp, rnd(), 900) * 0.008f;
+        dk *= m->drums;
+        out_l += dk;
+        out_r += dk;
+    }
+
+    /* whale song, far away */
+    if (m->whales) {
+        A.whale_t -= 1.0f / SR;
+        if (A.whale_t <= 0.0f && A.whale_env <= 1e-3f) {
+            A.whale_t = 9.0f + rnd01() * 14.0f;
+            A.whale_f0 = 140 + rnd01() * 120;
+            A.whale_f1 = A.whale_f0 * (0.6f + rnd01() * 1.4f);
+            A.whale_len = 2.5f + rnd01() * 2.5f;
+            A.whale_pos = 0.0f;
+            A.whale_env = 1.0f;
+        }
+        if (A.whale_env > 1e-3f) {
+            A.whale_pos += 1.0f / SR;
+            float t = A.whale_pos / A.whale_len;
+            if (t >= 1.0f)
+                A.whale_env = 0.0f;
+            float f = A.whale_f0 + (A.whale_f1 - A.whale_f0) * (0.5f - 0.5f * cosf(t * PI_F));
+            A.whale_phase += f * (1.0f + 0.01f * sinf(A.whale_pos * 30.0f)) / SR;
+            float w = (sinf(2 * PI_F * A.whale_phase) + 0.3f * sinf(6 * PI_F * A.whale_phase)) * sinf(PI_F * fminf(t, 1.0f)) * 0.05f;
+            out_l += w * 0.7f;
+            out_r += w;
+        }
     }
 
     /* pad (warm strings) and choir (the same notes through vowel formants) */
@@ -919,14 +1713,30 @@ static float danger_sample(void)
     return s * A.danger * 0.28f;
 }
 
-/* the boombox: bass line, kick, snare, hats in a D minor funk groove */
+/* the boombox: bass line, kick, snare, hats. three records: a D minor funk groove,
+ * a one-drop reggae skank, and four-on-the-floor disco */
 static void groove_sample(float *l, float *r)
 {
-    static const int BASS[16] = { 38, 0, 38, 50, 0, 41, 0, 43, 38, 0, 45, 0, 48, 0, 45, 43 };
-    static const int KICK[16] = { 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0 };
-    static const int SNARE[16] = { 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1 };
+    static const int BASSES[3][16] = {
+        { 38, 0, 38, 50, 0, 41, 0, 43, 38, 0, 45, 0, 48, 0, 45, 43 },
+        { 43, 0, 0, 0, 43, 0, 46, 0, 48, 0, 0, 0, 46, 0, 43, 0 },
+        { 45, 57, 45, 57, 45, 57, 45, 57, 41, 53, 41, 53, 43, 55, 43, 55 },
+    };
+    static const int KICKS[3][16] = {
+        { 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0 },
+        { 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 },
+        { 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0 },
+    };
+    static const int SNARES[3][16] = {
+        { 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1 },
+        { 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 },
+        { 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0 },
+    };
+    static const float TEMPO[3] = { 104.0f, 76.0f, 120.0f };
+    int rec = A.scene.groove % 3;
+    const int *BASS = BASSES[rec], *KICK = KICKS[rec], *SNARE = SNARES[rec];
 
-    double sixteenth = SR * 60.0 / 104.0 / 4.0;
+    double sixteenth = SR * 60.0 / TEMPO[rec] / 4.0;
     A.groove_clock += 1.0;
     if (A.groove_clock >= sixteenth) {
         A.groove_clock -= sixteenth;
@@ -938,7 +1748,11 @@ static void groove_sample(float *l, float *r)
         }
         if (KICK[s]) A.kick_env = 1.0f, A.kick_phase = 0;
         if (SNARE[s]) A.snare_env = 1.0f;
-        A.hat_env = s % 2 == 0 ? 0.7f : 0.35f;
+        A.hat_env = rec == 2 ? (s % 2 ? 0.9f : 0.2f) : rec == 1 ? (s % 4 == 2 ? 0.8f : 0.0f) : (s % 2 == 0 ? 0.7f : 0.35f);
+        /* reggae: the skank, a clipped chord on the off-beats */
+        if (rec == 1 && s % 4 == 2)
+            for (int i = 0; i < 3; i++)
+                stab((float)(67 + i * 4 - (s >= 8 ? 2 : 0)), 0.9f);
     }
 
     A.gbass_env *= 1.0f - 1.0f / (SR * 0.18f);
@@ -1075,6 +1889,130 @@ static void ambience_sample(float *l, float *r, float *wet)
         *r += s * (0.55f + 0.45f * pan);
     }
 
+    /* the sea on the shore: a steady wash, and every few seconds a wave rolls in and breaks */
+    float surf = A.scene.surf;
+    if (surf > 0.01f && !under) {
+        A.surf_t -= 1.0f / SR;
+        if (A.surf_t <= 0.0f) {
+            A.surf_len = 3.5f + rnd01() * 2.5f;
+            A.surf_t = A.surf_len * (0.9f + rnd01() * 0.8f);
+            A.surf_env = 0.0001f;
+        }
+        float wave = 0.0f;
+        if (A.surf_env > 0.0f) {
+            A.surf_env += 1.0f / (SR * A.surf_len);
+            float t = A.surf_env;
+            if (t >= 1.0f)
+                A.surf_env = 0.0f;
+            /* the swell builds, crashes, then fizzes back down the sand */
+            wave = t < 0.35f ? t / 0.35f * 0.6f : t < 0.42f ? 1.0f : expf(-(t - 0.42f) * 4.0f);
+        }
+        float cut = 300 + 3500 * wave;
+        float pan = A.scene.surf_pan;
+        for (int ch = 0; ch < 2; ch++) {
+            float n = onepole(&A.surf_lp[ch][1], onepole(&A.surf_lp[ch][0], rnd(), cut), cut);
+            float s = n * (0.25f + wave * 1.1f) * surf * 0.5f;
+            if (ch == 0) *l += s * (0.55f - 0.45f * pan); else *r += s * (0.55f + 0.45f * pan);
+            *wet += s * 0.3f;
+        }
+    }
+    /* a gale howling round corners */
+    if (A.scene.wind > 0.01f) {
+        svf(&A.howl_f, rnd(), 380 + 600 * A.scene.wind + 200 * sinf(A.wind_t * 0.7f), 0.08f);
+        float s = A.howl_f.bp * A.scene.wind * 0.35f * (0.4f + 0.6f * open);
+        *l += s;
+        *r += s * 0.9f;
+    }
+    /* hail rattling down */
+    if (A.scene.hail > 0.05f && !under) {
+        if (rnd01() < A.scene.hail * 400.0f / SR)
+            A.hail_env = 0.3f + rnd01() * 0.7f;
+        A.hail_env *= 1.0f - 1.0f / (SR * 0.002f);
+        float s = rnd() * A.hail_env * 0.25f * A.scene.hail * (0.3f + 0.7f * open);
+        float pan = rnd();
+        *l += s * (0.5f - 0.4f * pan);
+        *r += s * (0.5f + 0.4f * pan);
+    }
+    /* a tornado's roar */
+    if (A.scene.tornado > 0.01f) {
+        float n = onepole(&A.tor_lp[1], onepole(&A.tor_lp[0], rnd(), 180), 220);
+        float s = n * A.scene.tornado * 2.5f * (0.8f + 0.2f * sinf(A.wind_t * 3.0f));
+        float pan = A.scene.tornado_pan;
+        *l += s * (0.55f - 0.45f * pan);
+        *r += s * (0.55f + 0.45f * pan);
+    }
+    /* Old Ember's rumble, deep in the ground */
+    if (A.scene.volcano > 0.01f) {
+        float n = onepole(&A.rumble_lp[1], onepole(&A.rumble_lp[0], rnd(), 60), 70);
+        float s = n * A.scene.volcano * 3.0f * (0.6f + 0.4f * sinf(A.wind_t * 0.5f));
+        *l += s;
+        *r += s;
+    }
+    /* lava bubbling and popping */
+    if (A.scene.lava > 0.01f) {
+        A.lava_t -= 1.0f / SR;
+        if (A.lava_t <= 0.0f) {
+            A.lava_t = 0.08f + rnd01() * 0.4f;
+            A.lava_env = 1.0f;
+            A.lava_freq = 70 + rnd01() * 90;
+        }
+        A.lava_env *= 1.0f - 1.0f / (SR * 0.08f);
+        A.lava_phase += A.lava_freq * (1.0f + A.lava_env) / SR;
+        float s = sinf(2 * PI_F * A.lava_phase) * A.lava_env * A.scene.lava * 0.25f;
+        *l += s;
+        *r += s;
+    }
+    /* the harbour: rigging clinking against masts, ropes creaking */
+    if (A.scene.harbour > 0.01f) {
+        A.harb_t -= 1.0f / SR;
+        if (A.harb_t <= 0.0f) {
+            A.harb_t = 0.6f + rnd01() * 2.5f;
+            A.harb_env = 1.0f;
+            A.harb_freq = rnd01() < 0.6f ? 1800 + rnd01() * 1400 : 140 + rnd01() * 60;
+        }
+        A.harb_env *= 1.0f - 1.0f / (SR * (A.harb_freq > 1000 ? 0.05f : 0.3f));
+        A.harb_phase += A.harb_freq / SR;
+        float s = sinf(2 * PI_F * A.harb_phase) * A.harb_env * A.scene.harbour * (A.harb_freq > 1000 ? 0.02f : 0.03f);
+        *l += s * 0.6f;
+        *r += s * 0.4f;
+        *wet += s;
+    }
+    /* Brinewick's shell wind chimes, pentatonic and random */
+    if (A.scene.chimes > 0.01f && !under) {
+        A.chime_t -= 1.0f / SR;
+        if (A.chime_t <= 0.0f) {
+            A.chime_t = (0.4f + rnd01() * 2.0f) / (0.3f + A.scene.chimes);
+            static const float notes[5] = { 84, 86, 88, 91, 93 };
+            int k = A.chime_next = (A.chime_next + 1) % 3;
+            A.chime_freq[k] = mtof(notes[(int)(rnd01() * 5) % 5]);
+            A.chime_env[k] = 0.6f + rnd01() * 0.4f;
+        }
+        for (int k = 0; k < 3; k++) {
+            if (A.chime_env[k] < 1e-4f)
+                continue;
+            A.chime_env[k] *= 1.0f - 1.0f / (SR * 1.2f);
+            A.chime_phase[k] += A.chime_freq[k] / SR;
+            float s = (sinf(2 * PI_F * A.chime_phase[k]) + 0.3f * sinf(2 * PI_F * A.chime_phase[k] * 2.76f)) * A.chime_env[k] * 0.012f * A.scene.chimes;
+            *l += s * (k == 1 ? 0.8f : 0.4f);
+            *r += s * (k == 1 ? 0.4f : 0.8f);
+            *wet += s * 2.0f;
+        }
+    }
+    /* under water: bubbles rising past your ears */
+    if (A.sub > 0.3f) {
+        A.bub_t -= 1.0f / SR;
+        if (A.bub_t <= 0.0f) {
+            A.bub_t = 0.05f + rnd01() * 0.6f;
+            A.bub_env = 1.0f;
+            A.bub_freq = 300 + rnd01() * 500;
+        }
+        A.bub_env *= 1.0f - 1.0f / (SR * 0.04f);
+        A.bub_phase += A.bub_freq * (1.0f + (1.0f - A.bub_env) * 1.5f) / SR;
+        float s = sinf(2 * PI_F * A.bub_phase) * A.bub_env * 0.05f * A.sub;
+        *l += s;
+        *r += s;
+    }
+
     /* fountain: a bubbling, band-passed babble */
     float water = A.scene.water;
     if (water > 0.01f) {
@@ -1105,6 +2043,7 @@ static void SDLCALL callback(void *user, SDL_AudioStream *stream, int additional
             A.danger += (A.scene.danger - A.danger) * (1.0f / (SR * 1.5f));
             A.groove += ((A.scene.boombox ? 1.0f : 0.0f) - A.groove) * (1.0f / (SR * 0.5f));
             A.slow += ((A.scene.slowmo ? 1.0f : 0.0f) - A.slow) * (1.0f / (SR * 0.4f));
+            A.sub += ((A.scene.submerged ? 1.0f : 0.0f) - A.sub) * (1.0f / (SR * 0.15f));
 
             /* switching moods: fade out, change, fade back in */
             if (A.scene.mood != A.mood) {
@@ -1173,7 +2112,7 @@ static void SDLCALL callback(void *user, SDL_AudioStream *stream, int additional
             l += reverb_channel(&A.reverb, 0, in, fb) * 0.9f;
             r += reverb_channel(&A.reverb, 1, in, fb) * 0.9f;
 
-            float cutoff = 18000.0f - 16500.0f * A.slow;
+            float cutoff = fminf(18000.0f - 16500.0f * A.slow, 18000.0f - 17300.0f * A.sub);
             l = onepole(&A.master_lp[0], l, cutoff);
             r = onepole(&A.master_lp[1], r, cutoff);
 
@@ -1314,14 +2253,20 @@ static bool spatial(vec3 pos, float volume, float *gl, float *gr)
     return true;
 }
 
-static void start_voice(Sfx s, float gl, float gr)
+static void start_voice_pitch(Sfx s, float gl, float gr, float pitch)
 {
     const Buffer *b = &sfx[s][(int)(rnd01() * VARIANTS) % VARIANTS];
     Voice *vo = free_voice();
     if (!b->data || !vo)
         return;
-    *vo = (Voice){ .data = b->data, .len = b->len, .rate = 0.94f + rnd01() * 0.12f,
+    float rate = pitch > 0.0f ? pitch : 0.94f + rnd01() * 0.12f;
+    *vo = (Voice){ .data = b->data, .len = b->len, .rate = rate,
                    .gl = gl * SFX_GAIN[s], .gr = gr * SFX_GAIN[s], .on = true };
+}
+
+static void start_voice(Sfx s, float gl, float gr)
+{
+    start_voice_pitch(s, gl, gr, 0.0f);
 }
 
 void audio_play(Sfx s, float volume)
@@ -1337,6 +2282,22 @@ void audio_play_at(Sfx s, vec3 pos, float volume)
     float gl, gr;
     if (spatial(pos, volume, &gl, &gr))
         start_voice(s, gl, gr);
+    UNLOCK();
+}
+
+void audio_play_pitch(Sfx s, float volume, float pitch)
+{
+    LOCK();
+    start_voice_pitch(s, volume * 0.7f, volume * 0.7f, pitch);
+    UNLOCK();
+}
+
+void audio_play_at_pitch(Sfx s, vec3 pos, float volume, float pitch)
+{
+    LOCK();
+    float gl, gr;
+    if (spatial(pos, volume, &gl, &gr))
+        start_voice_pitch(s, gl, gr, pitch);
     UNLOCK();
 }
 

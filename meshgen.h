@@ -25,6 +25,10 @@ void mb_box(MeshBuilder *mb, mat4 xf, vec3 half, float tile);
 void mb_cylinder(MeshBuilder *mb, mat4 xf, float r_bottom, float r_top, float height,
                  int segments, float tile);
 
+/* triangular prism placed by `xf`: a triangle 2*half[0] wide at the bottom (y = -half[1])
+ * rising to a ridge at y = +half[1], run 2*half[2] deep along z. gable ends, roofs */
+void mb_wedge(MeshBuilder *mb, mat4 xf, vec3 half, float tile);
+
 /* capsule from the origin along -Z for `length`, rounded ends of radius r */
 void mb_capsule(MeshBuilder *mb, mat4 xf, float r, float length, int segments);
 

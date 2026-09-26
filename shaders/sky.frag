@@ -24,8 +24,8 @@ void main()
     vec3 dir = normalize(far.xyz / far.w - u_camera_pos.xyz);
 
     vec3 color = sky_color(dir);
-    if (dir.y < 0.0)
-        color = mix(u_fog.rgb, u_ground_color.rgb * 0.5, min(-dir.y * 4.0, 1.0));
+    if (dir.y < 0.0)    /* below the horizon: the far haze (over the sea), darkening only well below */
+        color = mix(u_fog.rgb, u_ground_color.rgb * 0.5, smoothstep(0.05, 0.4, -dir.y));
 
     /* sun: bright disc plus a wide soft glow, hidden by thick cloud */
     float cloud = u_weather.y;
@@ -41,5 +41,7 @@ void main()
         color = mix(color, cloud_col, amount * smoothstep(0.0, 0.15, dir.y) * (0.5 + cloud * 0.5));
     }
 
+    if (u_sea.y > 0.5)
+        color = sea_murk();         /* under the sea there's no sky, only water */
     f_col = vec4(color, 1.0);
 }

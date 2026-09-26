@@ -40,6 +40,15 @@ static Stats stats(const Creature *c)
         };
         return sl[c->variant];
     }
+    case CR_CRAB:     return (Stats){ "Giant Crab", 60, 0.9f, 2.6f, 9, 1.6f, 11, 0.4f, 1.3f, 0.7f, 0.7f };
+    case CR_JELLYFISH: return (Stats){ "Jellyfish", 12, 0, 0, 0, 1.3f, 8, 0, 1.5f, 0.4f, 0.4f };
+    case CR_SHARK:    return (Stats){ "Shark", 90, 0, 6.2f, 24, 1.8f, 20, 0, 1.6f, 0.8f, 0.8f };
+    case CR_BAT:      return (Stats){ "Bat", 10, 0, 7.0f, 10, 0.8f, 4, 0, 3.0f, 0.25f, 0.25f };
+    case CR_IMP:      return (Stats){ "Magma Imp", 40, 1.4f, 4.2f, 18, 1.4f, 7, 0.5f, 1.6f, 0.35f, 1.0f };
+    case CR_DROWNED:  return (Stats){ "Drowned Guard", 70, 1.2f, 3.4f, 14, 1.8f, 12, 0.55f, 1.6f, 0.45f, 1.7f };
+    case CR_WRAITH:   return (Stats){ "Wraith", 50, 1.4f, 3.6f, 16, 1.7f, 9, 0.5f, 1.5f, 0.45f, 1.8f };
+    case CR_EEL:      return (Stats){ "Angler Eel", 55, 0, 4.5f, 6, 2.4f, 14, 0, 1.4f, 0.4f, 0.5f };
+    case CR_KING:     return (Stats){ "The Drowned King", 650, 1.0f, 2.6f, 30, 3.2f, 24, 0.8f, 2.2f, 1.0f, 3.9f };
     default: return (Stats){ "?", 10, 1, 1, 1, 1, 1, 1, 1, 0.5f, 1 };
     }
 }
@@ -88,38 +97,52 @@ static void find_rig(const Model *m, Rig *r, const char *attack)
     r->hand_l = model_find_node(m, "handslot.l");
 }
 
-/* a round blob with two dark eyes; the body is see-through and glows inside */
-static void build_slime(Model *m)
+/* a slime is two models: the glowing core, eyes and bubbles inside (drawn like anything
+ * else), and the jelly around them, drawn afterwards with shaders/slime: glossy, see-
+ * through, rippling. The jelly counts as solid for shadows. */
+static void build_slime(Model *core, Model *body)
 {
     MeshBuilder mbs[3];
     Material mats[3];
     for (int i = 0; i < 3; i++)
         mb_init(&mbs[i]);
-    material_color(&mats[0], 0.25f, 0.85f, 0.3f, 0.12f, 0.0f);
-    mats[0].base_color[3] = 0.72f;
-    mats[0].alpha_mode = ALPHA_BLEND;
-    glm_vec3_copy((vec3){0.05f, 0.35f, 0.08f}, mats[0].emissive);
-    material_color(&mats[1], 0.02f, 0.02f, 0.02f, 0.15f, 0.0f);
-    material_color(&mats[2], 0.1f, 0.6f, 0.15f, 0.5f, 0.0f);
-    glm_vec3_copy((vec3){0.2f, 1.2f, 0.2f}, mats[2].emissive);      /* the glowing core */
+    material_color(&mats[0], 0.02f, 0.02f, 0.02f, 0.1f, 0.0f);         /* eyes, glossy black */
+    material_color(&mats[1], 0.1f, 0.6f, 0.15f, 0.5f, 0.0f);
+    glm_vec3_copy((vec3){0.25f, 1.4f, 0.25f}, mats[1].emissive);        /* the glowing core */
+    material_color(&mats[2], 0.6f, 1.0f, 0.65f, 0.2f, 0.0f);
+    glm_vec3_copy((vec3){0.1f, 0.4f, 0.12f}, mats[2].emissive);         /* bubbles floating in it */
 
-    /* body: a sphere squashed a little, sitting on the ground */
     mat4 xf;
-    glm_translate_make(xf, (vec3){0, 0.5f, 0});
-    glm_scale(xf, (vec3){1.0f, 0.85f, 1.0f});
-    mb_capsule(&mbs[0], xf, 0.5f, 0.0f, 28);
-    glm_translate_make(xf, (vec3){0, 0.45f, 0});
-    mb_capsule(&mbs[2], xf, 0.2f, 0.0f, 14);
+    glm_translate_make(xf, (vec3){0, 0.42f, 0});
+    glm_scale(xf, (vec3){1.0f, 0.9f, 1.0f});
+    mb_capsule(&mbs[1], xf, 0.19f, 0.0f, 16);
     for (int s = -1; s <= 1; s += 2) {
-        glm_translate_make(xf, (vec3){s * 0.15f, 0.62f, 0.4f});
-        mb_capsule(&mbs[1], xf, 0.06f, 0.0f, 12);
+        glm_translate_make(xf, (vec3){s * 0.15f, 0.6f, 0.36f});
+        mb_capsule(&mbs[0], xf, 0.06f, 0.0f, 12);
+        glm_translate_make(xf, (vec3){s * 0.14f, 0.63f, 0.41f});
+        mb_capsule(&mbs[2], xf, 0.018f, 0.0f, 6);      /* a highlight in each eye */
     }
-    /* draw order: core and eyes (opaque) first, then the jelly */
-    MeshBuilder order[3] = { mbs[2], mbs[1], mbs[0] };
-    Material morder[3] = { mats[2], mats[1], mats[0] };
-    model_from_builders(m, order, morder, 3);
+    for (int k = 0; k < 7; k++) {
+        float a = k * 2.4f, r = 0.12f + (k % 3) * 0.08f;
+        glm_translate_make(xf, (vec3){cosf(a) * r, 0.2f + k * 0.06f, sinf(a) * r});
+        mb_capsule(&mbs[2], xf, 0.025f + (k % 2) * 0.015f, 0.0f, 8);
+    }
+    model_from_builders(core, mbs, mats, 3);
     for (int i = 0; i < 3; i++)
         mb_free(&mbs[i]);
+
+    /* the jelly: a smooth, finely divided blob, flattening where it sits */
+    MeshBuilder jelly;
+    mb_init(&jelly);
+    glm_translate_make(xf, (vec3){0, 0.46f, 0});
+    glm_scale(xf, (vec3){1.0f, 0.9f, 1.0f});
+    mb_capsule(&jelly, xf, 0.5f, 0.0f, 40);
+    Material jm;
+    material_color(&jm, 0.22f, 0.85f, 0.32f, 0.05f, 0.0f);
+    jm.base_color[3] = 1.0f;
+    glm_vec3_copy((vec3){0.08f, 0.45f, 0.12f}, jm.emissive);
+    model_from_builders(body, &jelly, &jm, 1);
+    mb_free(&jelly);
 }
 
 /* the fix for one creature model: its size (and anything else, e.g. .yaw to turn
@@ -172,7 +195,7 @@ void creatures_load(Game *g)
         load_or_die(&g->weapon_models[i], path, NULL);
     }
 
-    build_slime(&g->slime_model);
+    build_slime(&g->slime_model, &g->slime_body_model);
 }
 
 void creatures_free(Game *g)
@@ -183,6 +206,7 @@ void creatures_free(Game *g)
     model_free(&g->fox_model);
     model_free(&g->rat_model);
     model_free(&g->slime_model);
+    model_free(&g->slime_body_model);
     model_free(&g->goblin_model);
     for (int i = 0; i < SK_COUNT; i++)
         model_free(&g->skel_models[i]);
@@ -192,6 +216,9 @@ void creatures_free(Game *g)
 
 static const Model *creature_model(Game *g, const Creature *c)
 {
+    const Model *b = beast_model(g, c);
+    if (b)
+        return b;
     switch (c->type) {
     case CR_RAT: return &g->rat_model;
     case CR_FOX: return &g->fox_model;
@@ -203,6 +230,9 @@ static const Model *creature_model(Game *g, const Creature *c)
 
 static const Rig *creature_rig(Game *g, const Creature *c)
 {
+    const Rig *b = beast_rig(g, c);
+    if (b)
+        return b;
     return c->type == CR_SKELETON ? &g->skel_rigs[c->variant] : &g->goblin_rig;
 }
 
@@ -222,6 +252,9 @@ Creature *creature_spawn(Game *g, CreatureType type, int variant, vec3 pos, floa
         glm_vec3_copy(pos, c->home);
         c->hp = c->max_hp = stats(c).hp;
         c->state = type == CR_SKELETON ? ST_DORMANT : ST_IDLE;
+        c->spawn = -1;
+        c->phase = frand() * 10.0f;
+        c->hover = type == CR_WRAITH ? 0.5f : 0.0f;
         c->state_t = frand() * 2.0f;
         c->anim_t = frand() * 10.0f;
         pose_init(&c->pose, creature_model(g, c));
@@ -239,8 +272,11 @@ static void kill(Game *g, Creature *c)
     c->death_t = 0.0f;
     c->hp = 0.0f;
     g->creatures_left--;
-    static const Sfx death_sfx[CR_TYPE_COUNT] = { SFX_RAT_DIE, SFX_FOX_DIE, SFX_SKELETON_DIE, SFX_GOBLIN_DIE, SFX_SLIME_SPLIT };
+    static const Sfx death_sfx[CR_TYPE_COUNT] = { SFX_RAT_DIE, SFX_FOX_DIE, SFX_SKELETON_DIE, SFX_GOBLIN_DIE, SFX_SLIME_SPLIT,
+                                                  SFX_CRAB, SFX_SLIME_SPLIT, SFX_SHARK_BITE, SFX_BAT, SFX_IMP,
+                                                  SFX_SKELETON_DIE, SFX_WRAITH, SFX_EEL, SFX_KING_ROAR };
     audio_play_at(death_sfx[c->type], c->pos, 1.0f);
+    quest_creature_killed(g, c);
 
     if (c->type == CR_SLIME && c->variant < 2) {
         /* it splits in two smaller slimes that bounce apart */
@@ -259,7 +295,9 @@ static void kill(Game *g, Creature *c)
         pose_free(&c->pose);
         return;
     }
-    message(g, COL_TEXT, "The %s is %s.", creature_name(c), c->type == CR_SKELETON ? "a heap of bones" : "dead");
+    message(g, COL_TEXT, "The %s is %s.", creature_name(c),
+            c->type == CR_SKELETON || c->type == CR_DROWNED ? "a heap of bones" : c->type == CR_WRAITH ? "gone, like smoke" :
+            c->type == CR_IMP ? "a cooling cinder" : "dead");
     /* sometimes they were carrying something */
     float r = frand();
     ItemId drop = ITEM_NONE;
@@ -269,6 +307,16 @@ static void kill(Game *g, Creature *c)
         drop = r < 0.2f ? ITEM_GRENADE : ITEM_CHEESE;
     else if ((c->type == CR_RAT || c->type == CR_FOX) && r < 0.4f)
         drop = r < 0.25f ? ITEM_SWEET_POTATO : ITEM_CHEESE;
+    else if (c->type == CR_CRAB && r < 0.5f)
+        drop = r < 0.15f ? ITEM_LIME : ITEM_FISH_SARDINE;
+    else if ((c->type == CR_DROWNED || c->type == CR_WRAITH) && r < 0.4f)
+        drop = ITEM_MANA_POTION;
+    else if (c->type == CR_SHARK)
+        drop = ITEM_FISH_SNAPPER;
+    else if (c->type == CR_IMP && r < 0.3f)
+        drop = ITEM_LIME;
+    if (c->type == CR_CRAB || c->type == CR_SHARK || c->type == CR_EEL)
+        add_shells(g, frand() < 0.2f ? SHELL_BLUE : SHELL_PINK, 1);
     if (drop != ITEM_NONE) {
         for (int i = 0; i < MAX_PICKUPS; i++) {
             Pickup *p = &g->pickups[i];
@@ -300,6 +348,22 @@ void damage_creature(Game *g, Creature *c, float dmg, vec3 push)
             audio_play_at(SFX_BLOCK, c->pos, 0.8f);
         }
     }
+    /* a giant crab's claws and shell take blows from the front */
+    if (c->type == CR_CRAB) {
+        vec3 to_player;
+        glm_vec3_sub(g->pos, c->pos, to_player);
+        float facing = (sinf(c->yaw) * to_player[0] + cosf(c->yaw) * to_player[2]) / fmaxf(glm_vec3_norm(to_player), 1e-3f);
+        if (facing > 0.5f) {
+            dmg *= 0.35f;
+            fx_sparks(&g->ps, (vec3){c->pos[0], c->pos[1] + 0.5f, c->pos[2]}, 6);
+            audio_play_at(SFX_BLOCK, c->pos, 0.6f);
+        }
+    }
+    /* half of what hits a wraith goes straight through */
+    if (c->type == CR_WRAITH && frand() < 0.5f && glm_vec3_norm(push) > 0.5f) {
+        fx_magic(&g->ps, (vec3){c->pos[0], c->pos[1] + 1.2f, c->pos[2]}, (vec3){0.5f, 1.0f, 2.0f}, 0.4f, 10);
+        return;
+    }
     if (c->state == ST_DORMANT) {
         c->state = ST_AWAKEN;       /* rudely woken */
         c->state_t = 0.0f;
@@ -312,9 +376,11 @@ void damage_creature(Game *g, Creature *c, float dmg, vec3 push)
     vec3 at = { c->pos[0], c->pos[1] + creature_height(c) * 0.6f, c->pos[2] };
     vec3 dir;
     glm_vec3_normalize_to(push, dir);
-    if (c->type == CR_SKELETON)
+    if (c->type == CR_SKELETON || c->type == CR_DROWNED || c->type == CR_WRAITH)
         fx_dust(&g->ps, at, 6);         /* bone dust, not blood */
-    else if (c->type == CR_SLIME)
+    else if (c->type == CR_IMP)
+        fx_sparks(&g->ps, at, 14);
+    else if (c->type == CR_SLIME || c->type == CR_JELLYFISH)
         fx_slime(&g->ps, at, dir, 14);
     else
         fx_blood(&g->ps, at, dir, 14);
@@ -341,7 +407,9 @@ static float anim_length(Game *g, const Creature *c, int anim)
 
 static Sfx voice(const Creature *c)
 {
-    static const Sfx v[CR_TYPE_COUNT] = { SFX_RAT_SQUEAK, SFX_FOX_BARK, SFX_BONES, SFX_GOBLIN, SFX_SLIME };
+    static const Sfx v[CR_TYPE_COUNT] = { SFX_RAT_SQUEAK, SFX_FOX_BARK, SFX_BONES, SFX_GOBLIN, SFX_SLIME,
+                                          SFX_CRAB, SFX_SLIME, SFX_SHARK_BITE, SFX_BAT, SFX_IMP, SFX_DROWNED,
+                                          SFX_WRAITH, SFX_EEL, SFX_KING_ROAR };
     return v[c->type];
 }
 
@@ -357,7 +425,7 @@ static void creature_update(Game *g, Creature *c, float real_dt)
     c->frozen_t -= real_dt;
     if (c->burn_t > 0.0f && c->state != ST_DEAD) {
         c->burn_t -= real_dt;
-        c->hp -= 6.0f * real_dt;
+        c->hp -= (c->type == CR_IMP || creature_aquatic(c) ? 0.0f : 6.0f) * real_dt;
         if (frand() < real_dt * 20.0f)
             fx_flame(&g->ps, (vec3){c->pos[0] + frand() - 0.5f, c->pos[1] + creature_height(c) * frand(), c->pos[2] + frand() - 0.5f}, 0.4f, 0.05f);
         if (c->hp <= 0.0f) {
@@ -405,6 +473,22 @@ static void creature_update(Game *g, Creature *c, float real_dt)
     vec3 want = { 0, 0, 0 };
     float speed = 0.0f;
 
+    /* the swimmers and flyers have their own ways */
+    if (creature_aquatic(c) || c->type == CR_BAT) {
+        beast_update(g, c, dt, dist, to_player);
+        glm_vec3_muladds(c->knock, dt, c->pos);
+        glm_vec3_scale(c->knock, expf(-dt * 4.0f), c->knock);
+        return;
+    }
+    /* unseen (Tome of Shadows), or staring at a garden gnome: they lose interest in you */
+    bool distracted = g->gnome_t > 0.0f && glm_vec3_distance(g->gnome_pos, c->pos) < 20.0f;
+    if ((g->shadow_t > 0.0f || distracted) && (c->state == ST_CHASE || c->state == ST_ATTACK) && c->type != CR_KING) {
+        c->state = ST_IDLE;
+        c->aggro = false;
+    }
+    if (distracted && c->state != ST_DEAD)
+        c->yaw += wrap_angle(atan2f(g->gnome_pos[0] - c->pos[0], g->gnome_pos[2] - c->pos[2]) - c->yaw) * (1.0f - expf(-dt * 3.0f));
+
     /* sleeping skeletons wake when you come close */
     if (c->state == ST_DORMANT) {
         if (!g->dead && dist < 5.0f)
@@ -443,7 +527,8 @@ static void creature_update(Game *g, Creature *c, float real_dt)
         break;
     default: {
         vec3 ce = { c->pos[0], c->pos[1] + st.height * 0.8f, c->pos[2] };
-        bool sees = !g->dead && dist < detect && level_line_clear(&g->level, ce, g->eye);
+        bool hidden = g->shadow_t > 0.0f || distracted;
+        bool sees = !g->dead && !hidden && dist < detect && level_line_clear(&g->level, ce, g->head);
         c->lost_t = sees ? 0.0f : c->lost_t + dt;
         bool hunting = c->state == ST_CHASE || c->state == ST_ATTACK;
         if (!hunting && !g->dead && (sees || (c->aggro && dist < detect * 2.0f))) {
@@ -458,7 +543,7 @@ static void creature_update(Game *g, Creature *c, float real_dt)
             glm_vec3_copy(c->home, c->target);
         }
 
-        bool mage = c->type == CR_SKELETON && c->variant == SK_MAGE;
+        bool mage = (c->type == CR_SKELETON && c->variant == SK_MAGE) || c->type == CR_IMP;
         if (c->state == ST_CHASE) {
             if (dist > 1e-3f)
                 glm_vec3_scale(to_player, 1.0f / dist, want);
@@ -479,6 +564,20 @@ static void creature_update(Game *g, Creature *c, float real_dt)
                 c->attack_t = 0.0f;
                 c->attack_hit = false;
             }
+            /* the King calls his guards when he's hurt */
+            if (c->type == CR_KING && c->hp < c->max_hp * 0.5f && !c->resurrected) {
+                c->resurrected = true;
+                for (int k = 0; k < 3; k++) {
+                    float a = k * 2.1f;
+                    Creature *d = creature_spawn(g, CR_DROWNED, 0, (vec3){c->pos[0] + cosf(a) * 4.0f, c->pos[1], c->pos[2] + sinf(a) * 4.0f}, a);
+                    if (d) {
+                        d->aggro = true;
+                        d->state = ST_CHASE;
+                    }
+                }
+                audio_play_at(SFX_KING_ROAR, c->pos, 1.2f);
+                message(g, COL_RED, "The Drowned King roars, and the floor gives up its dead!");
+            }
         } else if (c->state == ST_ATTACK) {
             c->attack_t += dt;
             turn_toward(&c->yaw, atan2f(to_player[0], to_player[2]), dt * 10.0f);
@@ -486,15 +585,25 @@ static void creature_update(Game *g, Creature *c, float real_dt)
                 c->attack_hit = true;
                 audio_play_at(voice(c), c->pos, 0.8f);
                 if (mage) {
-                    vec3 from = { c->pos[0] + sinf(c->yaw) * 0.6f, c->pos[1] + 1.4f, c->pos[2] + cosf(c->yaw) * 0.6f };
+                    vec3 from = { c->pos[0] + sinf(c->yaw) * 0.6f, c->pos[1] + (c->type == CR_IMP ? 0.8f : 1.4f), c->pos[2] + cosf(c->yaw) * 0.6f };
                     vec3 aim;
-                    glm_vec3_sub(g->eye, from, aim);
+                    glm_vec3_sub(g->head, from, aim);
                     aim[1] -= 0.3f;
                     glm_vec3_normalize(aim);
-                    glm_vec3_scale(aim, 11.0f, aim);
-                    bolt_fire(g, BOLT_MAGE, from, aim, true);
+                    glm_vec3_scale(aim, c->type == CR_IMP ? 14.0f : 11.0f, aim);
+                    if (c->type == CR_IMP)
+                        aim[1] += 2.0f;         /* lobbed */
+                    bolt_fire(g, c->type == CR_IMP ? BOLT_EMBER : BOLT_MAGE, from, aim, true);
+                } else if (c->type == CR_KING && c->spawn >= 0 && frand() < 0.35f) {
+                    /* the King's slam: a shockwave through the floor */
+                    explode(g, (vec3){c->pos[0] + sinf(c->yaw) * 2.0f, c->pos[1], c->pos[2] + cosf(c->yaw) * 2.0f}, 0.0f, 0.1f, false);
+                    if (dist < 7.0f)
+                        hurt_player(g, c->pos, st.damage * 0.8f);
+                    audio_play_at(SFX_KING_ROAR, c->pos, 1.0f);
                 } else if (dist < st.reach * 1.35f && c->type != CR_SLIME) {
                     hurt_player(g, c->pos, st.damage);
+                    if (c->type == CR_WRAITH)
+                        g->mana = fmaxf(0.0f, g->mana - 15.0f);     /* its touch drains magic */
                 }
             }
             if (c->attack_t >= st.cycle) {
@@ -563,13 +672,19 @@ static void creature_update(Game *g, Creature *c, float real_dt)
         return;
     }
 
-    /* walk, steering around whatever blocks the way */
+    /* walk, steering around whatever blocks the way (crabs face you and go sideways) */
     if (speed > 0.0f) {
         turn_toward(&c->yaw, atan2f(want[0], want[2]) + c->detour, dt * 7.0f);
         vec3 before, fwd = { sinf(c->yaw), 0.0f, cosf(c->yaw) };
         glm_vec3_copy(c->pos, before);
         glm_vec3_muladds(fwd, speed * dt, c->pos);
+        if (c->type == CR_CRAB)
+            glm_vec3_muladds((vec3){cosf(c->yaw), 0, -sinf(c->yaw)}, sinf(c->anim_t * 1.3f) * speed * 0.6f * dt, c->pos);
         level_collide(&g->level, c->pos, st.radius * 0.8f, st.height);
+        /* land creatures won't wade in over their heads */
+        float surface, depth;
+        if (sea_at(g, c->pos[0], c->pos[2], &surface, &depth) && depth > st.height * 0.7f)
+            glm_vec3_copy(before, c->pos);
         float moved = glm_vec3_distance(before, c->pos);
         if (moved < speed * dt * 0.35f)
             c->detour = c->detour != 0.0f ? c->detour : (frand() < 0.5f ? 1.2f : -1.2f);
@@ -583,7 +698,11 @@ static void creature_update(Game *g, Creature *c, float real_dt)
     glm_vec3_muladds(c->knock, dt, c->pos);
     glm_vec3_scale(c->knock, expf(-dt * 6.0f), c->knock);
     level_collide(&g->level, c->pos, st.radius * 0.8f, st.height);
-    c->pos[1] = ground_at(g, c->pos[0], c->pos[2], c->pos[1]);
+    c->pos[1] = ground_at(g, c->pos[0], c->pos[2], c->pos[1] - c->hover) + c->hover + (c->hover > 0.0f ? sinf(c->phase + c->anim_t * 1.5f) * 0.15f : 0.0f);
+    /* a tornado throws them about too */
+    vec3 twist;
+    weather_twister_force(&g->weather, c->pos, twist);
+    glm_vec3_muladds(twist, dt * 0.5f, c->knock);
 
     /* don't stand inside the player */
     if (dist < 0.35f + st.radius && dist > 1e-3f)
@@ -676,6 +795,9 @@ void creatures_update(Game *g, float dt)
         float d = glm_vec3_distance(c->pos, g->pos);
         if (d > 80.0f && c->state != ST_DEAD)
             continue;
+        /* wraiths and bats only come out at night (the crypt is always night) */
+        if ((c->type == CR_WRAITH || c->type == CR_BAT) && !g->night && level_area(&g->level, c->pos) != AREA_CRYPT)
+            continue;
         creature_update(g, c, dt);
         if (!c->used)
             continue;
@@ -685,6 +807,8 @@ void creatures_update(Game *g, float dt)
             pose_rat(g, c);
         else if (c->type == CR_FOX)
             pose_fox(g, c);
+        else if (c->type >= CR_CRAB)
+            beast_pose(g, c);
         else if (c->type != CR_SLIME)
             pose_humanoid(g, c);
     }
@@ -699,7 +823,7 @@ static void creature_matrix(const Creature *c, mat4 out)
     Transform t = c->xf;
     if (c->type == CR_RAT && (c->state == ST_CHASE || c->state == ST_FLEE))
         t.pos[1] += fabsf(sinf(c->anim_t * 14.0f)) * 0.04f;   /* scurrying bounce */
-    if (c->state == ST_DANCE && c->type != CR_SKELETON && c->type != CR_GOBLIN)
+    if (c->state == ST_DANCE && c->type != CR_SKELETON && c->type != CR_GOBLIN && c->type < CR_IMP)
         t.pos[1] += fabsf(sinf(c->anim_t * 8.0f)) * 0.25f;
     if (c->state == ST_ATTACK && c->type == CR_FOX) {
         float f = glm_clamp((c->attack_t - 0.25f) / 0.3f, 0, 1);
@@ -741,6 +865,8 @@ void creatures_draw(Game *g, GLuint prog, mat4 vp, bool depth)
         Creature *c = &g->creatures[i];
         if (!c->used || glm_vec3_distance(c->pos, g->eye) > (depth ? 45.0f : 70.0f))
             continue;
+        if ((c->type == CR_WRAITH || c->type == CR_BAT) && !g->night && level_area(&g->level, c->pos) != AREA_CRYPT)
+            continue;
         vec3 mid = { c->pos[0], c->pos[1] + creature_height(c) * 0.5f, c->pos[2] };
         if (!frustum_sphere(&fr, mid, creature_height(c) + 0.5f))
             continue;
@@ -755,8 +881,14 @@ void creatures_draw(Game *g, GLuint prog, mat4 vp, bool depth)
             if (c->type == CR_SKELETON)     /* a faint, cold glow in the eyes and bones */
                 glm_vec4_add(cp.tint, (vec4){0.0f, 0.01f, 0.03f, 0.0f}, cp.tint);
         }
+        if (c->type >= CR_CRAB) {
+            beast_draw(g, c, prog, vp, xf, &cp);
+            continue;
+        }
         const Model *m = creature_model(g, c);
         model_draw(m, c->type == CR_SLIME ? NULL : &c->pose, prog, vp, xf, &cp);
+        if (c->type == CR_SLIME && depth)
+            model_draw(&g->slime_body_model, NULL, prog, vp, xf, &cp);    /* jelly casts a shadow */
 
         if (c->type == CR_SKELETON) {
             const Rig *r = &g->skel_rigs[c->variant];
@@ -768,6 +900,84 @@ void creatures_draw(Game *g, GLuint prog, mat4 vp, bool depth)
                 draw_weapon(g, c, body, r->hand_l, WPN_SHIELD, prog, vp, &cp);
             if (c->variant == SK_ROGUE)
                 draw_weapon(g, c, body, r->hand_l, WPN_BLADE, prog, vp, &cp);
+        }
+    }
+}
+
+/* the slimes' jelly: glossy, see-through and rippling, over everything solid */
+void slimes_draw(Game *g, mat4 vp)
+{
+    GLuint prog = g->slime_prog;
+    const Material *mat = &g->slime_body_model.prims[0].mat;
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    for (int i = 0; i < MAX_CREATURES; i++) {
+        Creature *c = &g->creatures[i];
+        if (!c->used || c->type != CR_SLIME || glm_vec3_distance(c->pos, g->eye) > 70.0f)
+            continue;
+        mat4 xf;
+        creature_matrix(c, xf);
+        vec4 tint = { 0, 0, 0, 0 };
+        if (c->hit_flash > 0.0f)
+            glm_vec4_copy((vec4){c->hit_flash * 6.0f, c->hit_flash, 0.0f, 0.0f}, tint);
+        if (c->frozen_t > 0.0f)
+            glm_vec4_copy((vec4){0.05f, 0.25f, 0.6f, 0.0f}, tint);
+        glProgramUniform4fv(prog, 2, 1, mat->base_color);
+        glProgramUniform3fv(prog, 7, 1, mat->emissive);
+        glProgramUniform4fv(prog, 11, 1, tint);
+        float slosh = c->vy != 0.0f ? 1.0f : 0.3f + 0.7f * expf(-c->hop_t * 4.0f);
+        glProgramUniform4f(prog, 13, c->phase * 3.0f, slosh, 0.0f, 0.0f);
+        DrawParams dp = { .no_material = true };
+        model_draw(&g->slime_body_model, NULL, prog, vp, xf, &dp);
+    }
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+}
+
+/* the eruption's burning cloud: everything out in the open within `radius` of the crater */
+void creatures_burn(Game *g, vec3 center, float radius)
+{
+    for (int i = 0; i < MAX_CREATURES; i++) {
+        Creature *c = &g->creatures[i];
+        if (!c->used || c->state == ST_DEAD)
+            continue;
+        if (c->spawn >= 0 && g->cspawns[c->spawn].sheltered)
+            continue;
+        if (level_area(&g->level, c->pos) == AREA_CRYPT || c->pos[1] < SEA_Y - 8.0f)
+            continue;
+        float dx = c->pos[0] - center[0], dz = c->pos[2] - center[2];
+        if (dx * dx + dz * dz < radius * radius) {
+            fx_flame(&g->ps, (vec3){c->pos[0], c->pos[1] + 0.5f, c->pos[2]}, 1.5f, 0.1f);
+            c->hp = 0.0f;
+            kill(g, c);
+        }
+    }
+}
+
+/* the Covenant: every creature that ever lived here, back where it began */
+void creatures_regenerate(Game *g, bool sheltered_too)
+{
+    for (int k = 0; k < g->cspawn_count; k++) {
+        CreatureSpawn *cs = &g->cspawns[k];
+        if (cs->sheltered && !sheltered_too)
+            continue;
+        bool alive = false;
+        for (int i = 0; i < MAX_CREATURES; i++)
+            if (g->creatures[i].used && g->creatures[i].spawn == k && g->creatures[i].state != ST_DEAD)
+                alive = true;
+        if (alive)
+            continue;
+        for (int i = 0; i < MAX_CREATURES; i++)
+            if (g->creatures[i].used && g->creatures[i].spawn == k) {
+                pose_free(&g->creatures[i].pose);
+                g->creatures[i].used = false;
+                g->creatures_left -= g->creatures[i].state != ST_DEAD;
+            }
+        Creature *c = creature_spawn(g, cs->type, cs->variant, cs->pos, cs->yaw);
+        if (c) {
+            c->spawn = k;
+            fx_magic(&g->ps, (vec3){cs->pos[0], cs->pos[1] + 0.8f, cs->pos[2]}, (vec3){1.5f, 4.0f, 1.0f}, 0.6f, 20);
         }
     }
 }

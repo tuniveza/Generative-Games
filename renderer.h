@@ -23,6 +23,8 @@ typedef struct {
     vec4 zenith;
     vec4 weather;           /* wetness, cloud cover, lightning flash, rain */
     vec4 cover_grid;        /* x0, z0, 1 / cell size, 1 = present */
+    vec4 sea;               /* sea level, camera underwater 0..1, volcanic ash 0..1, in the undersea palace 0..1 */
+    vec4 height_grid;       /* terrain heights: x0, z0, 1 / spacing, samples per side */
     vec4 light_pos[MAX_LIGHTS];
     vec4 light_color[MAX_LIGHTS];
 } FrameUniforms;
@@ -45,6 +47,9 @@ typedef struct {
     float damage;           /* 0..1 */
     float slowmo;
     float dead;
+    float underwater;       /* 0..1 the camera is under the sea */
+    float ash;              /* 0..1 the volcano's ash cloud */
+    float toxic;            /* 0..1 choking on volcanic fumes */
 } PostEffects;
 
 typedef struct {
@@ -57,7 +62,7 @@ typedef struct {
     int bloom_w[BLOOM_LEVELS], bloom_h[BLOOM_LEVELS];
 
     GLuint ubo, empty_vao;
-    GLuint cover_tex;
+    GLuint cover_tex, height_tex;
     GLuint sky_prog, down_prog, up_prog, post_prog;
 
     FrameUniforms frame;
@@ -77,6 +82,9 @@ void renderer_set_cover(Renderer *r, GLuint tex, float x0, float z0, float cell)
 void renderer_add_light(Renderer *r, vec3 pos, vec3 color, float radius);
 /* how open the sky is above the camera (0..1): thins the fog indoors */
 void renderer_set_camera_sky(Renderer *r, float open);
+/* the terrain's height texture, so water knows how deep it is */
+void renderer_set_heightmap(Renderer *r, GLuint tex, float x0, float z0, float spacing, int samples);
+void renderer_set_sea(Renderer *r, float sea_y, float underwater, float ash, float palace);
 
 /* shadow pass covering a circle of `radius` around `center`; draw casters with
  * light_view_proj and the shadow program, then call renderer_begin_scene */

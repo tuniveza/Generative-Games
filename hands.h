@@ -14,7 +14,7 @@ typedef enum {
     ACT_CAST,       /* pushing a spell out of the open palm */
 } HandAction;
 
-typedef enum { LEFT_EMPTY, LEFT_TORCH, LEFT_LANTERN } LeftHand;
+typedef enum { LEFT_EMPTY, LEFT_TORCH, LEFT_LANTERN, LEFT_SHIELD } LeftHand;
 
 /* everything the hands react to; filled in by the game every frame */
 typedef struct {
@@ -29,6 +29,11 @@ typedef struct {
     float look_dx, look_dy; /* mouse movement this frame, for sway */
     float hurt;             /* 0..1 flinch */
     float land;             /* 0..1 dip after landing */
+    bool swimming;          /* both hands pull through the water */
+    float swim_phase;
+    ItemId body_armor;      /* what covers the forearms: sleeves change to match */
+    int fishing;            /* FishState: the rod's pose */
+    bool mask_on;           /* the gas mask is on your face, not in your hand */
 } HandInput;
 
 typedef struct {

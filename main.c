@@ -35,13 +35,22 @@ typedef struct {
     int left;               /* what the left hand carries */
     bool cam_set;
     float cam[5];           /* x y z yaw pitch (degrees) */
+    bool fly, third;        /* hover where --cam puts you; see yourself from behind */
+    bool block;             /* hold the right mouse button (shield up) */
+    int weather;            /* -1 = as it comes */
+    float volcano;          /* seconds into Old Ember's cycle, < 0 = from the start */
+    int wear[4];            /* item ids to put on */
 } Options;
+
+extern float avatar_test_turn;
 
 static void parse_options(Options *o, int argc, char **argv)
 {
     memset(o, 0, sizeof *o);
     o->frames = 90;
     o->select = -1;
+    o->weather = -1;
+    o->volcano = -1.0f;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--shot") && i + 1 < argc) o->shot = argv[++i];
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) o->frames = atoi(argv[++i]);
@@ -55,6 +64,19 @@ static void parse_options(Options *o, int argc, char **argv)
         else if (!strcmp(argv[i], "--interact-at") && i + 1 < argc) o->interact_at = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--hold") && i + 1 < argc) o->hold = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--left") && i + 1 < argc) o->left = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--fly")) o->fly = true;
+        else if (!strcmp(argv[i], "--third")) o->third = true;
+        else if (!strcmp(argv[i], "--block")) o->block = true;
+        else if (!strcmp(argv[i], "--face")) avatar_test_turn = 3.14159f;
+        else if (!strcmp(argv[i], "--weather") && i + 1 < argc) o->weather = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--volcano") && i + 1 < argc) o->volcano = (float)atof(argv[++i]);
+        else if (!strcmp(argv[i], "--wear") && i + 1 < argc) {
+            for (int k = 0; k < 4; k++)
+                if (!o->wear[k]) {
+                    o->wear[k] = atoi(argv[++i]);
+                    break;
+                }
+        }
         else if (!strcmp(argv[i], "--cam") && i + 5 < argc) {
             o->cam_set = true;
             for (int k = 0; k < 5; k++)
@@ -94,6 +116,22 @@ static void apply_options(Game *game, const Options *o)
         game->cam.fp_yaw = glm_rad(o->cam[3]);
         game->cam.fp_pitch = glm_rad(o->cam[4]);
     }
+    if (o->fly)
+        game->cam.flying = true;
+    game->rmb = o->block;
+    game->third_person = o->third;
+    if (o->weather >= 0 && o->weather < WEATHER_COUNT) {
+        weather_set(&game->weather, (WeatherType)o->weather);
+        weather_snap(&game->weather);
+        game->weather.auto_change = false;
+    }
+    if (o->volcano >= 0.0f)
+        game->volcano.t = o->volcano;
+    for (int k = 0; k < 4; k++)
+        if (o->wear[k] > 0 && o->wear[k] < ITEM_COUNT) {
+            game_give(game, o->wear[k], 1);
+            equip_item(game, o->wear[k]);
+        }
     if (o->orbit) {
         game->cam.mode = CAM_ORBIT;
         glm_vec3_copy(game->pos, game->cam.target);

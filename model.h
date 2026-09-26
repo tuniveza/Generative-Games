@@ -174,6 +174,7 @@ typedef struct {
     vec4 tint;              /* rgb added as glow (hit flash), a unused */
     bool depth_only;        /* shadow pass: no materials */
     bool no_material;       /* the shader has its own look (water): skip material uniforms */
+    const unsigned char *skip;  /* if set, nodes with skip[node] != 0 aren't drawn (armour pieces) */
 } DrawParams;
 
 /* draws every mesh node of the model; `pose` may be NULL for the rest pose */

@@ -93,6 +93,43 @@ void mb_box(MeshBuilder *mb, mat4 xf, vec3 half, float tile)
     }
 }
 
+/* one flat quad or triangle (corners in order), its normal from the winding */
+static void flat_face(MeshBuilder *mb, mat4 xf, vec3 *pts, int n, float tile)
+{
+    vec3 w[4];
+    for (int i = 0; i < n; i++)
+        glm_mat4_mulv3(xf, pts[i], 1.0f, w[i]);
+    vec3 e1, e2, nrm, u;
+    glm_vec3_sub(w[1], w[0], e1);
+    glm_vec3_sub(w[n - 1], w[0], e2);
+    glm_vec3_cross(e1, e2, nrm);
+    glm_vec3_normalize(nrm);
+    glm_vec3_normalize_to(e1, u);
+    vec3 up;
+    glm_vec3_cross(nrm, u, up);
+    int base = mb->vert_count;
+    for (int i = 0; i < n; i++)
+        add_vert(mb, w[i], nrm, glm_vec3_dot(w[i], u) / tile, -glm_vec3_dot(w[i], up) / tile, u, 1.0f);
+    add_tri(mb, base, base + 1, base + 2);
+    if (n == 4)
+        add_tri(mb, base, base + 2, base + 3);
+}
+
+void mb_wedge(MeshBuilder *mb, mat4 xf, vec3 half, float tile)
+{
+    float x = half[0], y = half[1], z = half[2];
+    vec3 front[3] = { { -x, -y, z }, { x, -y, z }, { 0, y, z } };
+    vec3 back[3] = { { x, -y, -z }, { -x, -y, -z }, { 0, y, -z } };
+    vec3 right[4] = { { x, -y, z }, { x, -y, -z }, { 0, y, -z }, { 0, y, z } };
+    vec3 left[4] = { { -x, -y, -z }, { -x, -y, z }, { 0, y, z }, { 0, y, -z } };
+    vec3 bottom[4] = { { -x, -y, -z }, { x, -y, -z }, { x, -y, z }, { -x, -y, z } };
+    flat_face(mb, xf, front, 3, tile);
+    flat_face(mb, xf, back, 3, tile);
+    flat_face(mb, xf, right, 4, tile);
+    flat_face(mb, xf, left, 4, tile);
+    flat_face(mb, xf, bottom, 4, tile);
+}
+
 void mb_cylinder(MeshBuilder *mb, mat4 xf, float r_bottom, float r_top, float height,
                  int segments, float tile)
 {

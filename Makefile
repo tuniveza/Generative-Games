@@ -3,7 +3,8 @@ CFLAGS  := -std=c17 -Wall -Wextra -g -O2 -Ideps/glad/include -Ideps/cglm/include
 LDLIBS  := $(shell pkg-config --libs sdl3) -lm
 
 BUILD   := build
-SRCS    := main.c game.c creatures.c magic.c npc.c menu.c weather.c audio.c level.c hands.c items.c ui.c particles.c renderer.c meshgen.c \
+SRCS    := main.c game.c creatures.c beasts.c magic.c npc.c menu.c weather.c audio.c level.c hands.c items.c ui.c particles.c renderer.c meshgen.c \
+           world.c coast.c village.c volcano.c undersea.c ocean.c player.c animals.c quest.c fishing.c shapes.c \
            model.c texture.c shader.c camera.c terrain.c deps/glad/src/gl.c deps/impl.c
 OBJS    := $(SRCS:%.c=$(BUILD)/%.o)
 TARGET  := $(BUILD)/bsg

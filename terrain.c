@@ -54,11 +54,12 @@ static float grid_height(const Terrain *t, int x, int z)
 }
 
 void terrain_create(Terrain *t, int res, float size, float height, float base_y,
-                    float flat_radius, unsigned seed)
+                    float flat_radius, unsigned seed, float (*shape)(float x, float z, float h))
 {
-    const char *sets[3] = { "assets/textures/leafy_grass", "assets/textures/rock_face",
-                            "assets/textures/forest_ground_04" };
-    for (int i = 0; i < 3; i++) {
+    const char *sets[TERRAIN_SETS] = { "assets/textures/leafy_grass", "assets/textures/rock_face",
+                                       "assets/textures/forest_ground_04", "assets/textures/coast_sand_01",
+                                       "assets/textures/burned_ground_01" };
+    for (int i = 0; i < TERRAIN_SETS; i++) {
         Material m;
         material_from_dir(&m, sets[i]);
         t->tex[i * 3 + 0] = m.base_tex;
@@ -85,9 +86,17 @@ void terrain_create(Terrain *t, int res, float size, float height, float base_y,
             float k = glm_clamp((dist - flat_radius) / (flat_radius * 0.5f), 0.0f, 1.0f);
             k = k * k * (3.0f - 2.0f * k);
 
-            t->heights[z * res + x] = base_y + h * k;
+            t->heights[z * res + x] = shape ? shape(wx, wz, base_y + h * k) : base_y + h * k;
         }
     }
+
+    glCreateTextures(GL_TEXTURE_2D, 1, &t->height_tex);
+    glTextureStorage2D(t->height_tex, 1, GL_R32F, res, res);
+    glTextureSubImage2D(t->height_tex, 0, 0, 0, res, res, GL_RED, GL_FLOAT, t->heights);
+    glTextureParameteri(t->height_tex, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTextureParameteri(t->height_tex, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTextureParameteri(t->height_tex, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(t->height_tex, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     /* vertices: position + normal, interleaved */
     float *verts = malloc(res * res * 6 * sizeof *verts);
@@ -145,6 +154,7 @@ void terrain_free(Terrain *t)
     glDeleteVertexArrays(1, &t->vao);
     glDeleteBuffers(1, &t->vbo);
     glDeleteBuffers(1, &t->ebo);
+    glDeleteTextures(1, &t->height_tex);
     free(t->heights);
     *t = (Terrain){0};
 }
@@ -170,9 +180,11 @@ void terrain_draw(const Terrain *t, GLuint prog, mat4 view_proj)
     glUseProgram(prog);
     glProgramUniformMatrix4fv(prog, 0, 1, GL_FALSE, (const float *)view_proj);
     /* units 0..7 and 9: grass, rock, forest floor (albedo, normal, arm each).
-     * unit 8 is the sun's shadow map, so the last texture skips over it */
+     * unit 8 is the sun's shadow map, so the last texture skips over it; 10 and 11
+     * are the level's cover and the height grid. sand and burnt ground are 12..17 */
     glBindTextures(0, 8, t->tex);
     glBindTextureUnit(9, t->tex[8]);
+    glBindTextures(12, 6, &t->tex[9]);
     glProgramUniform4fv(prog, 20, t->hole_count, (const float *)t->holes);
     glProgramUniform1i(prog, 28, t->hole_count);
     glBindVertexArray(t->vao);

@@ -21,3 +21,66 @@ pilgrim|p276|The Pilgrim|I walked here from the sea, following a star that turne
 pilgrim|p276|The Pilgrim|In the garden grows a fern that only unfurls when someone tells the truth. It has been curled up for nine years.
 pilgrim|p276|The Pilgrim|Every night the fire pit in the shrine tells a story in sparks. Tonight it told me you would come.
 herald|p263|The Herald|Welcome to the palace of King Aldric. Please mind the chandeliers, they are older than the floor.
+# ---- the coast ----
+# "id:tag" lines are said by the quests (quest.c) rather than in turn.
+# a voice with "~slow" is slowed and deepened, "~child" is pitched up (tools/make_voices.sh)
+elder|p265|Elder Maren|Welcome to Brinewick, traveller. Mind the gulls. They have opinions, and they share them.
+elder|p265|Elder Maren|Every half hour Old Ember clears its throat and burns the coast to cinders. Then the Covenant sings everything back. We have grown used to it. Mostly.
+elder|p265|Elder Maren|Our bell rang the tides in and out for three hundred years. Then the Drowned Court took it one stormy night, and the sea has been sulking ever since.
+elder|p265|Elder Maren|The blossom tree in the square only flowers when someone in the village is in love. It has flowered every day this year. We are a romantic lot.
+elder:start|p265|Elder Maren|You look capable. Our shrine lanterns have gone dark, and without them the tide forgets its way home. Ask Pell the lamplighter how to wake them.
+elder:lanterns|p265|Elder Maren|Three lanterns, at the shrine on the cliff's edge. A flame from your own hand will wake them.
+elder:lit|p265|Elder Maren|The shrine burns again! Take these shells, with Brinewick's thanks. Now, our bell. Ask Quill the harbourmaster what the sea did with it.
+elder:bell|p265|Elder Maren|The Tide Bell! Listen to it. The sea is calmer already. Brinewick will sing about you until Old Ember gets bored of us.
+elder:after|p265|Elder Maren|Hear that? The bell rings the tide in and out again. You have given us back our clock.
+pell|p254|Pell|Evening. Or morning. Whichever it is. I light things. It is a calling.
+pell|p254|Pell|I once lit a candle so well it refused to go out. It is still burning in my cellar thirty years on, very pleased with itself.
+pell|p254|Pell|The paper lanterns change colour with the mood of the street. Pink is gossip. Blue is somebody's cooking.
+pell:how|p254|Pell|The shrine lanterns? Carry a torch or a lantern in your off hand, walk up to each one, and give it a light. Mind your eyebrows. I lost mine twice.
+quill|p237|Harbourmaster Quill|Harbourmaster Quill. Mind the ropes, the gulls, and the third plank on pier two. It bites.
+quill|p237|Harbourmaster Quill|A ship came in last spring loaded entirely with rubber ducks. The captain would not say why. The gulls have never been happier.
+quill|p237|Harbourmaster Quill|The lighthouse keeper retired years ago, but the lamp still lights itself every night. Nobody asks questions. We like our lamp.
+quill:charts|p237|Harbourmaster Quill|The bell? Taken by the Drowned Court, down where the whirlpools are born. But first, a storm scattered my three tide charts. One on the walrus rocks, one at the lighthouse, one at the end of pier two. Find them, and I will set you up to fish.
+quill:waiting|p237|Harbourmaster Quill|Three charts. The walrus rocks, the lighthouse, the end of pier two. The sea does not read them, but I do.
+quill:done|p237|Harbourmaster Quill|All three! You are a marvel. Here, a driftwood rod and some worms. Old Brine at the end of the long pier knows more about the Court than anyone. Catch a fish and he will talk your ear off.
+brine|p245|Old Brine|Shh. You will scare the mackerel. Oh, it is you. Pull up a bollard.
+brine|p245|Old Brine|Forty years I have fished this harbour. Caught a golden snapper once. It winked at me. I let it go, and I regret nothing, and I regret everything.
+brine|p245|Old Brine|Glow grubs after dark, off the lighthouse. That is where the lanternfish run. Do not tell anyone I told you.
+brine|p245|Old Brine|The walruses whistle when they are happy. Feed one a sardine and it will whistle you a whole sea shanty.
+brine:fish|p245|Old Brine|Catch me a fish, any fish, and bring it here. Then we will talk about the Court.
+brine:court|p245|Old Brine|Lovely. Right. Only the Conch of the Deep opens the Court, and the Conch lives deep, past the harbour mouth. It bites at night, on a Leviathan rod, with an ember lure. Bram can forge the lure if you bring him Old Ember's heart, from the crater. Take a gas mask. The fumes up there would peel paint.
+brine:conch|p245|Old Brine|Leviathan rod. Ember lure. Deep water. After dark. Coralie sells the rod. It is dear, but so is drowning.
+brine:big|p245|Old Brine|If you ever land a golden snapper, bring it to me. I have a coral rod I have been saving for someone worthy.
+brine:bigdone|p245|Old Brine|A golden snapper! Well I never. Take the coral rod, you have earned it. And put that beauty back where it came from. I am joking. Mostly.
+bram|p246|Bram|Bram. I make things hot, and then I hit them. Buy something, or hold this.
+bram|p246|Bram|I forged a sword from a falling star once. It was mostly iron and disappointment.
+bram|p246|Bram|Armour is like a good coat. Heavy on a nice day, a blessing when the hail comes.
+bram:heart|p246|Bram|Old Ember's heart, still warm! Stand back. There. Three ember lures, burning like tiny suns. The fish will think you are the dawn.
+bram:need|p246|Bram|An ember lure? I would need a coal from the heart of the mountain. The crater's rim. Take a mask, or you will be coughing for a week.
+coralie|p294|Coralie|Welcome to the Curious Clam! Everything is for sale except the gnome's dignity. Shells only, darling.
+coralie|p294|Coralie|Shells are money here. White ones are pennies, gold ones are fortunes. The walruses keep trying to pay in sardines.
+coralie|p294|Coralie|Someone brought in a message in a bottle yesterday. It said help. Then underneath, actually I am fine. The sea is very dramatic.
+coralie:rod|p294|Coralie|The Leviathan rod? That is the good one. A hundred and sixty shells, and worth every single one.
+tamsin|p262|Tamsin|Welcome to the Salted Eel! Sit anywhere except that stool. That stool knows what it did.
+tamsin|p262|Tamsin|Every night the fishermen tell a bigger story about the one that got away. By winter the fish will be larger than the harbour.
+tamsin|p262|Tamsin|We serve seaweed three ways. Fried, stewed, and apologised for.
+hollis|p271|Hollis|Mind the nets. They catch fish, feet, and occasionally opinions.
+hollis|p271|Hollis|I mended a net for a mermaid once. She paid me in a song. Could not eat it, but I still hum it.
+hollis|p271|Hollis|Wind storms are the worst. My nets end up three villages over, all tangled with somebody's washing.
+wren|p277~child|Wren|Hi! Can you swim? I can swim all the way to the rock and back. Twice!
+wren|p277~child|Wren|My gran says if you swim too long you will grow fins. I am trying really hard.
+wren|p277~child|Wren|Do not swim out past the harbour mouth. There is a shark out there called Dennis. He is not friendly.
+juniper|p268|Juniper|Welcome to the Hall of Tides. Please do not touch the exhibits. Or breathe on them. Or look at them too hard.
+juniper|p268|Juniper|The First Tide came before the land. Its people left twelve relics along this coast, and every one of them tells a story.
+juniper|p268|Juniper|Each relic you bring stands on its own pedestal, with its story beside it. History, returned.
+juniper:relic|p268|Juniper|Oh! Another relic of the First Tide. I will put it on its pedestal at once.
+juniper:all|p268|Juniper|All twelve. The last tablet says whoever gathers them will meet the Unmoored. Look for him at the lighthouse on a clear night. He is very hard to see.
+sunny|p297|Sunny|Morning! The water is lovely. A bit sharky past the buoys, but lovely.
+sunny|p297|Sunny|I swim forty lengths a day. The dolphins have started timing me. I think they are betting.
+sunny|p297|Sunny|Jellyfish sting, but a lime takes the burn right out. Coralie sells them.
+unmoored|p260~slow|The Unmoored|You can see me. Few do. I was old when the sea was a puddle, and I remember the first wave.
+unmoored|p260~slow|The Unmoored|Before the land there was only the Tide. My people rode it in on shells the size of cathedrals, and left our stories in stone so the land would remember us.
+unmoored|p260~slow|The Unmoored|Old Ember is not angry. It is keeping time. Every fire it breathes, the Covenant answers with life. They are old friends, those two.
+unmoored|p260~slow|The Unmoored|The Drowned Court did not drown. Its queen chose the sea. Her bell was a promise between the land and the water.
+unmoored:gift|p260~slow|The Unmoored|Twelve stories, gathered by one pair of hands. Then take this. It is my eye, from when I had eyes. With it, the sea will know you as one of its own.
+unmoored:after|p260~slow|The Unmoored|The tide goes out. The tide comes in. I will wait, as I always have.

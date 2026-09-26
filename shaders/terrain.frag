@@ -1,6 +1,7 @@
 #version 450 core
 
-/* textured ground: grass and forest floor on flat land, rock on slopes and peaks */
+/* textured ground: grass and forest floor on flat land, rock on slopes and peaks,
+ * sand on the beach and the sea floor, burnt ground and lava cracks on the volcano */
 
 in vec3 v_world_pos;
 in vec3 v_normal;
@@ -14,6 +15,12 @@ layout(binding = 5) uniform sampler2D u_rock_arm;
 layout(binding = 6) uniform sampler2D u_dirt_albedo;
 layout(binding = 7) uniform sampler2D u_dirt_normal;
 layout(binding = 9) uniform sampler2D u_dirt_arm;
+layout(binding = 12) uniform sampler2D u_sand_albedo;
+layout(binding = 13) uniform sampler2D u_sand_normal;
+layout(binding = 14) uniform sampler2D u_sand_arm;
+layout(binding = 15) uniform sampler2D u_burnt_albedo;
+layout(binding = 16) uniform sampler2D u_burnt_normal;
+layout(binding = 17) uniform sampler2D u_burnt_arm;
 
 layout(location = 20) uniform vec4 u_holes[8];     /* stairwells: no ground here (MAX_HOLES) */
 layout(location = 28) uniform int u_hole_count;
@@ -51,6 +58,20 @@ void main()
     vec3 arm    = mix(texture(u_grass_arm, uv).rgb,    texture(u_dirt_arm, uv).rgb,    patches);
     vec3 tn     = mix(texture(u_grass_normal, uv).xyz, texture(u_dirt_normal, uv).xyz, patches) * 2.0 - 1.0;
 
+    /* the beach and everything under the sea: sand */
+    float sand = smoothstep(-0.75, -1.35, p.y + (noise(p.xz * 0.08) - 0.5) * 0.5);
+    /* pale, near-white sand, a touch warm */
+    albedo = mix(albedo, texture(u_sand_albedo, uv * 0.8).rgb * vec3(1.55, 1.48, 1.35), sand);
+    arm    = mix(arm,    texture(u_sand_arm, uv * 0.8).rgb,    sand);
+    tn     = mix(tn,     texture(u_sand_normal, uv * 0.8).xyz * 2.0 - 1.0, sand);
+
+    /* the volcano: burnt ground all over it */
+    float vd = length(p.xz - VOLCANO_XZ);
+    float burnt = smoothstep(VOLCANO_R * 1.1, VOLCANO_R * 0.8, vd + (noise(p.xz * 0.04) - 0.5) * 30.0);
+    albedo = mix(albedo, texture(u_burnt_albedo, uv * 0.7).rgb, burnt);
+    arm    = mix(arm,    texture(u_burnt_arm, uv * 0.7).rgb,    burnt);
+    tn     = mix(tn,     texture(u_burnt_normal, uv * 0.7).xyz * 2.0 - 1.0, burnt);
+
     /* planar uv: u along +x, texture "up" along -z */
     vec3 t = normalize(vec3(1, 0, 0) - ng * ng.x);
     vec3 b = cross(ng, t);
@@ -61,12 +82,24 @@ void main()
     w /= w.x + w.y + w.z;
     float rock = 1.0 - smoothstep(0.72, 0.86, ng.y);
     vec3 rp = p / 6.0;
-    albedo = mix(albedo, triplanar(u_rock_albedo, rp, w), rock);
+    albedo = mix(albedo, triplanar(u_rock_albedo, rp, w) * mix(1.0, 0.35, burnt), rock);
     arm = mix(arm, triplanar(u_rock_arm, rp, w), rock);
     n = normalize(mix(n, ng, rock * 0.5));
 
-    float rough = arm.g;
+    /* sand the waves keep wet: darker and glossy along the waterline */
+    float wet_sand = sand * smoothstep(u_sea.x + 1.1, u_sea.x + 0.1, p.y);
+    albedo *= mix(1.0, 0.62, wet_sand);
+
+    float rough = arm.g * mix(1.0, 0.45, wet_sand);
     apply_wet(albedo, rough, n, ng, p);
     vec3 color = shade(albedo, 0.0, rough, arm.r, n, p);
+
+    /* lava glowing through cracks near the crater */
+    float hot = smoothstep(VOLCANO_R * 0.32, VOLCANO_R * 0.12, vd);
+    if (hot > 0.0) {
+        float cracks = smoothstep(0.035, 0.0, abs(noise(p.xz * 0.35) - 0.5)) * smoothstep(0.3, 0.8, noise(p.xz * 0.05 + 3.0));
+        float pulse = 0.75 + 0.25 * sin(u_misc.x * 1.3 + p.x * 0.2);
+        color += vec3(9.0, 2.2, 0.3) * cracks * hot * pulse;
+    }
     f_col = vec4(apply_fog(color, p), 1.0);
 }

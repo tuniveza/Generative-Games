@@ -1,5 +1,6 @@
 #include "level.h"
 #include "meshgen.h"
+#include "world.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -265,10 +266,10 @@ char level_cell_at(const Level *lv, float x, float z)
 
 Area level_area(const Level *lv, vec3 p)
 {
-    if (p[1] < FLOOR_Y - 2.0f)
-        return AREA_CRYPT;
     int cx, cy;
     level_world_to_cell(lv, p[0], p[2], &cx, &cy);
+    if (p[1] < FLOOR_Y - 2.0f && p[1] > CRYPT_Y - 3.0f && K(lv, cx, cy) != ' ')
+        return AREA_CRYPT;
     if (p[1] > UPPER_Y - 0.6f && U(lv, cx, cy) != ' ')
         return AREA_UPPER;
     for (size_t i = 0; i < sizeof REGIONS / sizeof REGIONS[0]; i++) {
@@ -276,7 +277,7 @@ Area level_area(const Level *lv, vec3 p)
         if (cx >= r->x0 && cx <= r->x1 && cy >= r->y0 && cy <= r->y1)
             return r->area;
     }
-    return AREA_OUTSIDE;
+    return world_area(p);
 }
 
 int level_add_box(Level *lv, vec3 min, vec3 max)
@@ -292,7 +293,7 @@ int level_add_box(Level *lv, vec3 min, vec3 max)
     return lv->box_count++;
 }
 
-static Spawn *add_spawn(Level *lv, SpawnKind kind, vec3 pos, float yaw)
+Spawn *level_add_spawn(Level *lv, SpawnKind kind, vec3 pos, float yaw)
 {
     if (lv->spawn_count == lv->spawn_cap) {
         lv->spawn_cap = lv->spawn_cap ? lv->spawn_cap * 2 : 128;
@@ -309,6 +310,11 @@ static Spawn *add_spawn(Level *lv, SpawnKind kind, vec3 pos, float yaw)
     s->yaw = yaw;
     s->index = index;
     return s;
+}
+
+static Spawn *add_spawn(Level *lv, SpawnKind kind, vec3 pos, float yaw)
+{
+    return level_add_spawn(lv, kind, pos, yaw);
 }
 
 static void add_hole(Level *lv, Hole h)
@@ -948,9 +954,11 @@ static void build_floor(Build *b, int cx, int cy, char ch)
               (vec3){c[0] + CELL * 0.5f, PALACE_TOP, c[2] + CELL * 0.5f});
 }
 
-static void build_cover(Level *lv)
+void level_build_cover(Level *lv)
 {
     /* rasterize every solid box's top into a height grid */
+    free(lv->cover);
+    glDeleteTextures(1, &lv->cover_tex);
     lv->cover_x0 = lv->min[0] - CELL;
     lv->cover_z0 = lv->min[2] - CELL;
     lv->cover_w = (int)((lv->max[0] - lv->min[0] + 2 * CELL) / COVER_RES) + 1;
@@ -1077,32 +1085,40 @@ void level_build(Level *lv)
         mb_free(&b.mb[i]);
     mb_free(&b.water);
 
-    level_cell_center(lv, 0, 0, lv->min);
-    level_cell_center(lv, lv->w - 1, lv->h - 1, lv->max);
-    lv->min[1] = CRYPT_Y;
-    lv->max[1] = PALACE_TOP;
-    build_cover(lv);
+    /* the world reaches well past the map: the coast, the village, the volcano */
+    glm_vec3_copy((vec3){-WORLD_HALF, CRYPT_Y, -WORLD_HALF}, lv->min);
+    glm_vec3_copy((vec3){WORLD_HALF, PALACE_TOP, WORLD_HALF}, lv->max);
+    lv->grid_x0 = -WORLD_HALF;
+    lv->grid_z0 = -WORLD_HALF;
+    lv->grid_w = lv->grid_h = (int)(2.0f * WORLD_HALF / CELL);
     level_finalize(lv);
+}
+
+/* which collision square (x, z) falls in; may be outside the grid */
+static void grid_cell(const Level *lv, float x, float z, int *gx, int *gz)
+{
+    *gx = (int)floorf((x - lv->grid_x0) / CELL);
+    *gz = (int)floorf((z - lv->grid_z0) / CELL);
 }
 
 void level_finalize(Level *lv)
 {
-    /* sort boxes into the map cells they overlap (counting pass, then filling pass) */
+    /* sort boxes into the squares they overlap (counting pass, then filling pass) */
     free(lv->grid_start);
     free(lv->grid_items);
     lv->grid_start = NULL;
     lv->grid_items = NULL;
-    int cells = lv->w * lv->h;
+    int cells = lv->grid_w * lv->grid_h;
     int *count = calloc(cells + 1, sizeof *count);
     for (int pass = 0; pass < 2; pass++) {
         for (int i = 0; i < lv->box_count; i++) {
             const Box *b = &lv->boxes[i];
             int x0, z0, x1, z1;
-            level_world_to_cell(lv, b->min[0] - 0.01f, b->min[2] - 0.01f, &x0, &z0);
-            level_world_to_cell(lv, b->max[0] + 0.01f, b->max[2] + 0.01f, &x1, &z1);
-            for (int z = z0 < 0 ? 0 : z0; z <= z1 && z < lv->h; z++) {
-                for (int x = x0 < 0 ? 0 : x0; x <= x1 && x < lv->w; x++) {
-                    int c = z * lv->w + x;
+            grid_cell(lv, b->min[0] - 0.01f, b->min[2] - 0.01f, &x0, &z0);
+            grid_cell(lv, b->max[0] + 0.01f, b->max[2] + 0.01f, &x1, &z1);
+            for (int z = z0 < 0 ? 0 : z0; z <= z1 && z < lv->grid_h; z++) {
+                for (int x = x0 < 0 ? 0 : x0; x <= x1 && x < lv->grid_w; x++) {
+                    int c = z * lv->grid_w + x;
                     if (pass == 0)
                         count[c]++;
                     else
@@ -1156,10 +1172,10 @@ float level_ground(const Level *lv, float x, float z, float feet, float step)
 {
     float best = -1000.0f;
     int cx, cy;
-    level_world_to_cell(lv, x, z, &cx, &cy);
-    if (cx < 0 || cy < 0 || cx >= lv->w || cy >= lv->h)
+    grid_cell(lv, x, z, &cx, &cy);
+    if (cx < 0 || cy < 0 || cx >= lv->grid_w || cy >= lv->grid_h)
         return best;
-    int c = cy * lv->w + cx;
+    int c = cy * lv->grid_w + cx;
     for (int k = lv->grid_start[c]; k < lv->grid_start[c + 1]; k++) {
         const Box *b = &lv->boxes[lv->grid_items[k]];
         if (b->off || x < b->min[0] || x > b->max[0] || z < b->min[2] || z > b->max[2])
@@ -1174,12 +1190,12 @@ bool level_collide(const Level *lv, vec3 p, float r, float height)
 {
     bool hit = false;
     int cx, cy;
-    level_world_to_cell(lv, p[0], p[2], &cx, &cy);
+    grid_cell(lv, p[0], p[2], &cx, &cy);
     for (int gy = cy - 1; gy <= cy + 1; gy++) {
         for (int gx = cx - 1; gx <= cx + 1; gx++) {
-            if (gx < 0 || gy < 0 || gx >= lv->w || gy >= lv->h)
+            if (gx < 0 || gy < 0 || gx >= lv->grid_w || gy >= lv->grid_h)
                 continue;
-            int c = gy * lv->w + gx;
+            int c = gy * lv->grid_w + gx;
             for (int k = lv->grid_start[c]; k < lv->grid_start[c + 1]; k++) {
                 const Box *b = &lv->boxes[lv->grid_items[k]];
                 /* standing on top of it, or passing under it, isn't a collision */
@@ -1238,24 +1254,23 @@ bool level_line_clear(const Level *lv, vec3 a, vec3 b)
 {
     vec3 d;
     glm_vec3_sub(b, a, d);
-    /* the map cells along the segment, each tested once */
+    /* the squares along the segment, each tested once */
     int x0, z0, x1, z1;
-    level_world_to_cell(lv, fminf(a[0], b[0]), fminf(a[2], b[2]), &x0, &z0);
-    level_world_to_cell(lv, fmaxf(a[0], b[0]), fmaxf(a[2], b[2]), &x1, &z1);
+    grid_cell(lv, fminf(a[0], b[0]), fminf(a[2], b[2]), &x0, &z0);
+    grid_cell(lv, fmaxf(a[0], b[0]), fmaxf(a[2], b[2]), &x1, &z1);
     float len = sqrtf(d[0] * d[0] + d[2] * d[2]);
     for (int gz = z0; gz <= z1; gz++) {
         for (int gx = x0; gx <= x1; gx++) {
-            if (gx < 0 || gz < 0 || gx >= lv->w || gz >= lv->h)
+            if (gx < 0 || gz < 0 || gx >= lv->grid_w || gz >= lv->grid_h)
                 continue;
-            /* skip cells the segment passes far from */
+            /* skip squares the segment passes far from */
             if (len > 1e-3f) {
-                vec3 cc;
-                level_cell_center(lv, gx, gz, cc);
-                float cross = fabsf((cc[0] - a[0]) * d[2] - (cc[2] - a[2]) * d[0]) / len;
+                float ccx = lv->grid_x0 + (gx + 0.5f) * CELL, ccz = lv->grid_z0 + (gz + 0.5f) * CELL;
+                float cross = fabsf((ccx - a[0]) * d[2] - (ccz - a[2]) * d[0]) / len;
                 if (cross > CELL * 0.75f)
                     continue;
             }
-            int c = gz * lv->w + gx;
+            int c = gz * lv->grid_w + gx;
             for (int k = lv->grid_start[c]; k < lv->grid_start[c + 1]; k++) {
                 const Box *bx = &lv->boxes[lv->grid_items[k]];
                 if (!bx->off && segment_hits_box(bx, a, d))

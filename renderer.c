@@ -133,6 +133,17 @@ void renderer_set_camera_sky(Renderer *r, float open)
     r->frame.misc[2] = open;
 }
 
+void renderer_set_heightmap(Renderer *r, GLuint tex, float x0, float z0, float spacing, int samples)
+{
+    r->height_tex = tex;
+    glm_vec4_copy((vec4){x0, z0, 1.0f / spacing, (float)samples}, r->frame.height_grid);
+}
+
+void renderer_set_sea(Renderer *r, float sea_y, float underwater, float ash, float palace)
+{
+    glm_vec4_copy((vec4){sea_y, underwater, ash, palace}, r->frame.sea);
+}
+
 void renderer_clear_lights(Renderer *r)
 {
     r->frame.misc[1] = 0.0f;
@@ -197,6 +208,7 @@ void renderer_begin_scene(Renderer *r)
     glNamedBufferSubData(r->ubo, 0, sizeof r->frame, &r->frame);
     glBindTextureUnit(8, r->shadow_tex);
     glBindTextureUnit(10, r->cover_tex);
+    glBindTextureUnit(11, r->height_tex);
 
     glBindFramebuffer(GL_FRAMEBUFFER, r->hdr_fbo);
     glViewport(0, 0, r->width, r->height);
@@ -262,6 +274,10 @@ void renderer_finish(Renderer *r, const PostEffects *fx)
     glProgramUniform1f(r->post_prog, 2, fx ? fx->damage : 0.0f);
     glProgramUniform1f(r->post_prog, 3, fx ? fx->slowmo : 0.0f);
     glProgramUniform1f(r->post_prog, 4, fx ? fx->dead : 0.0f);
+    glProgramUniform1f(r->post_prog, 5, fx ? fx->underwater : 0.0f);
+    glProgramUniform1f(r->post_prog, 6, fx ? fx->ash : 0.0f);
+    glProgramUniform1f(r->post_prog, 7, fx ? fx->toxic : 0.0f);
+    glProgramUniform1f(r->post_prog, 8, r->frame.misc[0]);
     renderer_fullscreen(r);
 }
 

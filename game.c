@@ -9,12 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define EYE_HEIGHT 1.62f
-#define PLAYER_R   0.35f
-#define PLAYER_H   1.75f
-#define STEP       0.45f
-#define GRAVITY    18.0f
-#define REACH      3.3f
 
 const float COL_TEXT[4]  = { 0.95f, 0.9f, 0.8f, 1.0f };
 const float COL_GOLD[4]  = { 1.0f, 0.82f, 0.4f, 1.0f };
@@ -53,6 +47,11 @@ static Pickup *new_pickup(Game *g, ItemId id, int count, vec3 pos)
     return NULL;
 }
 
+Pickup *spawn_pickup(Game *g, ItemId id, int count, vec3 pos)
+{
+    return new_pickup(g, id, count, pos);
+}
+
 void game_give(Game *g, ItemId id, int count)
 {
     if (ITEMS[id].stacks) {
@@ -86,6 +85,113 @@ bool has_item(const Game *g, ItemId id)
 static ItemId held_item(const Game *g)
 {
     return g->slots[g->selected].id;
+}
+
+void game_give_quiet(Game *g, ItemId id, int count)
+{
+    if (ITEMS[id].stacks)
+        for (int i = 0; i < INV_SLOTS; i++)
+            if (g->slots[i].id == id) {
+                g->slots[i].count += count;
+                return;
+            }
+    for (int i = HOTBAR; i < INV_SLOTS + HOTBAR; i++) {
+        int k = i % INV_SLOTS;     /* the satchel first, then the hotbar */
+        if (g->slots[k].id == ITEM_NONE) {
+            g->slots[k] = (Slot){ id, count };
+            return;
+        }
+    }
+    game_give(g, id, count);
+}
+
+int count_item(const Game *g, ItemId id)
+{
+    int n = 0;
+    for (int i = 0; i < INV_SLOTS; i++)
+        if (g->slots[i].id == id)
+            n += g->slots[i].count;
+    return n;
+}
+
+void take_items(Game *g, ItemId id, int count)
+{
+    for (int i = 0; i < INV_SLOTS && count > 0; i++)
+        while (g->slots[i].id == id && count > 0) {
+            count--;
+            if (--g->slots[i].count <= 0)
+                g->slots[i] = (Slot){0};
+        }
+}
+
+/* ---------- shells: the coast's money ---------- */
+
+const int SHELL_VALUE[SHELL_KINDS] = { 1, 5, 10, 25 };
+const char *SHELL_NAME[SHELL_KINDS] = { "white", "pink", "blue", "golden" };
+
+void add_shells(Game *g, int color, int count)
+{
+    g->shells[color] += count;
+}
+
+int shell_total(const Game *g)
+{
+    int v = 0;
+    for (int i = 0; i < SHELL_KINDS; i++)
+        v += g->shells[i] * SHELL_VALUE[i];
+    return v;
+}
+
+bool pay_shells(Game *g, int price)
+{
+    if (shell_total(g) < price)
+        return false;
+    /* pay with the smallest shells first, then break a bigger one and take change */
+    for (int i = 0; i < SHELL_KINDS && price > 0; i++) {
+        int n = price / SHELL_VALUE[i];
+        if (n > g->shells[i])
+            n = g->shells[i];
+        g->shells[i] -= n;
+        price -= n * SHELL_VALUE[i];
+    }
+    for (int i = 0; i < SHELL_KINDS && price > 0; i++) {
+        if (g->shells[i] > 0 && SHELL_VALUE[i] >= price) {
+            g->shells[i]--;
+            int change = SHELL_VALUE[i] - price;
+            price = 0;
+            for (int k = i - 1; k >= 0; k--) {
+                g->shells[k] += change / SHELL_VALUE[k];
+                change %= SHELL_VALUE[k];
+            }
+        }
+    }
+    return true;
+}
+
+bool is_day(const Game *g)
+{
+    return !g->night;
+}
+
+float storm_level(const Game *g)
+{
+    const Weather *w = &g->weather;
+    float s = w->type == WEATHER_STORM ? 0.7f : w->rain * 0.3f;
+    return glm_clamp(fmaxf(s, w->wind * 0.8f), 0.0f, 1.0f);
+}
+
+bool sea_at(const Game *g, float x, float z, float *surface, float *depth)
+{
+    if (terrain_height(&g->terrain, x, z) > SEA_Y + 0.3f)
+        return false;
+    vec3 p = { x, SEA_Y, z };
+    if (world_area(p) == AREA_UNDERSEA)
+        return false;
+    float bottom = ground_at(g, x, z, SEA_Y + 0.5f);
+    float d = SEA_Y - bottom;
+    *surface = ocean_height(x, z, g->time, storm_level(g), d);
+    *depth = *surface - bottom;
+    return true;
 }
 
 static void use_up(Game *g, int slot)
@@ -182,6 +288,14 @@ static const char *PROP_FILES[PM_COUNT] = {
     "book_encyclopedia_set_01", "wooden_candlestick", "Chandelier_02", "potted_plant_02",
     "GothicCabinet_01", "GothicCommode_01", "ornate_mirror_01", "horse_statue_01", "WoodenTable_02",
     "ArmChair_01", "vintage_oil_lamp",
+    "bronze_whale_statue", "bronze_shark_statue", "bronze_ray_statue", "marble_bust_01", "lion_head",
+    "cannon_01", "dutch_ship_medium", "dutch_ship_large_02", "ocean_buoy", "lateral_sea_marker", "lifebuoy",
+    "wooden_barrels_01", "wooden_bucket_02", "lambis_shell", "CashRegister_01", "garden_gnome", "Ukulele_01",
+    "bananas", "wicker_basket_01", "carved_wooden_elephant", "painted_wooden_shelves",
+    "brass_diya_lantern", "Lantern_01", "lantern_chandelier_01", "wine_barrel_01", "wooden_picnic_table",
+    "painted_wooden_chair_01", "painted_wooden_table", "spinning_wheel_01", "planter_box_01", "tea_set_01",
+    "chess_set",
+    "moon_rock_01", "moon_rock_03",
 };
 
 void load_or_die(Model *m, const char *path, const ModelOptions *opts)
@@ -245,11 +359,26 @@ static Prop *add_prop(Game *g, int model, vec3 pos, float yaw, float scale, floa
     Prop *p = &g->props[g->prop_count++];
     p->model = model;
     p->no_shadow = model == PM_FLOWERS || model == PM_BOOKS || model == PM_CANDLE;
+    p->burns = model == PM_SHRUB_A || model == PM_SHRUB_B || model == PM_FERN || model == PM_FLOWERS ||
+               model == PM_SORREL || model == PM_PLANTER;
+    p->growth = 1.0f;
     p->xf = TRANSFORM_AT(pos, yaw);
     p->pos[1] -= sink;
     glm_vec3_fill(p->scale, scale);
     prop_place(g, p);
     return p;
+}
+
+Prop *spawn_prop(Game *g, int model, vec3 pos, float yaw, float scale)
+{
+    return add_prop(g, model, pos, yaw, scale, 0.0f);
+}
+
+static LightSource *add_light(Game *g, LightKind kind, vec3 pos, vec3 normal, float yaw, bool lit);
+
+LightSource *spawn_light(Game *g, LightKind kind, vec3 pos, vec3 normal, float yaw, bool lit)
+{
+    return add_light(g, kind, pos, normal, yaw, lit);
 }
 
 static LightSource *add_light(Game *g, LightKind kind, vec3 pos, vec3 normal, float yaw, bool lit)
@@ -285,6 +414,20 @@ static void fill_chest(Chest *ch, int index, bool gold)
     }
 }
 
+/* a creature, and a note of where it began so the volcano can bring it back */
+static void remember_creature(Game *g, CreatureType type, int variant, vec3 pos, float yaw)
+{
+    Creature *c = creature_spawn(g, type, variant, pos, yaw);
+    if (!c || g->cspawn_count >= MAX_CREATURES)
+        return;
+    CreatureSpawn *cs = &g->cspawns[g->cspawn_count];
+    *cs = (CreatureSpawn){ .type = type, .variant = variant, .yaw = yaw };
+    glm_vec3_copy(pos, cs->pos);
+    Area a = level_area(&g->level, pos);
+    cs->sheltered = a == AREA_CRYPT || a == AREA_UNDERSEA || pos[1] < SEA_Y - 10.0f;
+    c->spawn = g->cspawn_count++;
+}
+
 static void spawn_world(Game *g)
 {
     Level *lv = &g->level;
@@ -298,12 +441,40 @@ static void spawn_world(Game *g)
             glm_vec3_copy(s->pos, g->spawn);
             g->spawn_yaw = s->yaw;
             break;
-        case SPAWN_RAT: creature_spawn(g, CR_RAT, 0, s->pos, s->yaw); break;
-        case SPAWN_FOX: creature_spawn(g, CR_FOX, 0, s->pos, s->yaw); break;
-        case SPAWN_GOBLIN: creature_spawn(g, CR_GOBLIN, 0, s->pos, s->yaw); break;
-        case SPAWN_SLIME: creature_spawn(g, CR_SLIME, 0, s->pos, s->yaw); break;
-        case SPAWN_SKELETON: creature_spawn(g, CR_SKELETON, s->variant, s->pos, s->yaw); break;
-        case SPAWN_NPC: npc_add(g, s->index, s->pos); break;
+        case SPAWN_RAT: remember_creature(g, CR_RAT, 0, s->pos, s->yaw); break;
+        case SPAWN_FOX: remember_creature(g, CR_FOX, 0, s->pos, s->yaw); break;
+        case SPAWN_GOBLIN: remember_creature(g, CR_GOBLIN, 0, s->pos, s->yaw); break;
+        case SPAWN_SLIME: remember_creature(g, CR_SLIME, 0, s->pos, s->yaw); break;
+        case SPAWN_SKELETON: remember_creature(g, CR_SKELETON, s->variant, s->pos, s->yaw); break;
+        case SPAWN_CREATURE: remember_creature(g, (CreatureType)s->variant, s->index, s->pos, s->yaw); break;
+        case SPAWN_NPC:
+        case SPAWN_VILLAGER: npc_add(g, s->index, s->pos, s->yaw); break;
+        case SPAWN_ANIMAL: animal_spawn(g, (Species)s->variant, s->pos, s->yaw); break;
+        case SPAWN_BOAT: boat_add(g, s->pos, s->yaw); break;
+        case SPAWN_THING: thing_add(g, (ThingKind)s->variant, s->index, s->pos, s->yaw); break;
+        case SPAWN_VENT:
+            if (g->vent_count < MAX_VENTS)
+                glm_vec3_copy(s->pos, g->vents[g->vent_count++]);
+            break;
+        case SPAWN_LAMP: {
+            LightSource *l = add_light(g, (LightKind)s->variant, s->pos, (vec3){0, -1, 0}, s->yaw, true);
+            if (l)
+                l->empty = true;    /* part of the building: not to be taken */
+            break;
+        }
+        case SPAWN_PROP: {
+            int model = s->variant;
+            Prop *p = add_prop(g, model, s->pos, s->yaw, s->normal[0] > 0.0f ? s->normal[0] : 1.0f, s->normal[1]);
+            if (p && (model == PM_BUOY || model == PM_MARKER))
+                p->floats = true;
+            if (p && s->normal[2] != 0.0f) {
+                p->roll = s->normal[2];
+                prop_place(g, p);
+            }
+            if (p && (model == PM_SHIP || model == PM_SHIP_LARGE || model == PM_BARRELS))
+                p->no_shadow = false;
+            break;
+        }
         case SPAWN_CHEST:
         case SPAWN_CHEST_GOLD: {
             if (g->chest_count >= MAX_CHESTS)
@@ -370,7 +541,7 @@ static void spawn_world(Game *g)
         }
         case SPAWN_PICKUP_DAGGER: new_pickup(g, ITEM_DAGGER, 1, (vec3){s->pos[0], s->pos[1] + 0.05f, s->pos[2]}); break;
         case SPAWN_PICKUP_SHIELD: new_pickup(g, ITEM_SHIELD, 1, (vec3){s->pos[0], s->pos[1] + 0.05f, s->pos[2]}); break;
-        case SPAWN_STATUE: add_prop(g, PM_STATUE, s->pos, s->yaw, 1.0f, 0.0f); break;
+        case SPAWN_STATUE: add_prop(g, PM_STATUE, s->pos, s->yaw, 1.7f, 0.0f); break;
         case SPAWN_BARREL: add_prop(g, PM_BARREL, s->pos, s->yaw, 1.0f, 0.0f); break;
         case SPAWN_CRATE: add_prop(g, PM_CRATE, s->pos, s->yaw, 1.0f, 0.0f); break;
         case SPAWN_VASE: add_prop(g, PM_VASE, s->pos, s->yaw, 1.0f, 0.0f); break;
@@ -409,14 +580,7 @@ static void spawn_world(Game *g)
         }
     }
 
-    /* stone horses flank the palace door, and the side chambers get furniture */
-    for (int i = 0; i < g->door_count; i++) {
-        Door *d = &g->doors[i];
-        if (d->pos[2] < -55.0f) {
-            add_prop(g, PM_HORSE, (vec3){d->pos[0] - 6.0f, FLOOR_Y, d->pos[2] + 7.0f}, 0.4f, 1.6f, 0.0f);
-            add_prop(g, PM_HORSE, (vec3){d->pos[0] + 6.0f, FLOOR_Y, d->pos[2] + 7.0f}, -0.4f, 1.6f, 0.0f);
-        }
-    }
+    /* the side chambers get furniture (the horses at the door are placed by world.c) */
     for (int i = 0; i < lv->spawn_count; i++) {
         Spawn *s = &lv->spawns[i];
         if (s->kind != SPAWN_NPC)
@@ -436,6 +600,23 @@ static void spawn_world(Game *g)
             add_prop(g, PM_MIRROR, (vec3){p[0] - 2.0f, p[1] + 1.0f, p[2]}, 3.14f, 1.0f, 0.0f);
         }
     }
+}
+
+void respawn_player_at(Game *g, vec3 pos, float yaw)
+{
+    glm_vec3_copy(pos, g->pos);
+    glm_vec3_zero(g->vel);
+    g->hp = g->max_hp;
+    g->mana = g->max_mana;
+    g->dead = false;
+    g->dead_t = 0;
+    g->cam.fp_yaw = yaw;
+    g->cam.fp_pitch = 0;
+    g->action = ACT_IDLE;
+    g->swimming = g->underwater = false;
+    g->toxic = 0.0f;
+    g->stamina = g->max_stamina;
+    g->breath = g->max_breath;
 }
 
 static void respawn_player(Game *g)
@@ -466,13 +647,20 @@ void game_init(Game *g, int width, int height)
     g->water_prog = shader_load("shaders/model.vert", "shaders/water.frag");
     ui_init("assets/fonts/Cinzel.ttf", "assets/fonts/Spectral-Regular.ttf");
 
-    terrain_create(&g->terrain, 512, 700.0f, 34.0f, FLOOR_Y - 0.06f, 150.0f, 1234);
+    /* the land: the ruins' clearing, hills, and beyond them the coast, the village's hill
+     * and the volcano (world.c shapes it) */
+    terrain_create(&g->terrain, 641, 2.0f * WORLD_HALF, 34.0f, FLOOR_Y - 0.06f, 150.0f, 1234, world_terrain_shape);
+    renderer_set_heightmap(&g->r, g->terrain.height_tex, -WORLD_HALF, -WORLD_HALF, 2.0f * WORLD_HALF / (641 - 1), 641);
     level_build(&g->level);
     for (int i = 0; i < g->level.hole_count; i++) {
         Hole *h = &g->level.holes[i];
         terrain_add_hole(&g->terrain, h->x0, h->z0, h->x1, h->z1);
     }
+    world_build(&g->world, &g->level, &g->terrain);
+    level_build_cover(&g->level);
     renderer_set_cover(&g->r, g->level.cover_tex, g->level.cover_x0, g->level.cover_z0, COVER_RES);
+    ocean_init(&g->ocean);
+    g->slime_prog = shader_load("shaders/slime.vert", "shaders/slime.frag");
     particles_init(&g->ps);
     weather_init(&g->weather);
     items_load();
@@ -498,7 +686,12 @@ void game_init(Game *g, int width, int height)
     g->door_right = model_find_node(&g->door_model, "large_castle_door_right");
     g->chest_lid = model_find_node(&g->chest_model, "treasure_chest_lid");
     creatures_load(g);
+    beasts_load(g);
     tombs_build_models(g);
+    player_load(g);
+    animals_load(g);
+    things_load(g);
+    g->shop_npc = -1;
 
     spawn_world(g);
     level_finalize(&g->level);      /* now that doors and characters have their boxes */
@@ -514,6 +707,7 @@ void game_init(Game *g, int width, int height)
     g->inv_held = -1;
     g->menu_drag = -1;
     settings_apply(g);
+    volcano_init(g);
     message(g, COL_TEXT, "Rain drums on the old stones. Something scratches in the halls.");
 }
 
@@ -528,6 +722,13 @@ void game_free(Game *g)
         model_free(&g->npc_models[i]);
     }
     creatures_free(g);
+    beasts_free(g);
+    player_free(g);
+    animals_free(g);
+    things_free(g);
+    world_free(&g->world);
+    ocean_free(&g->ocean);
+    glDeleteProgram(g->slime_prog);
     model_free(&g->door_model);
     model_free(&g->chest_model);
     model_free(&g->tomb_model);
@@ -568,10 +769,12 @@ void hurt_player(Game *g, vec3 from, float dmg)
     dir[1] = 0;
     glm_vec3_normalize(dir);
 
+    /* armour takes its share */
+    dmg *= 1.0f - armor_total(g);
     /* a raised shield stops most of a hit coming from in front */
     vec3 fwd;
     flat_forward(g, fwd);
-    if (g->action == ACT_BLOCK && held_item(g) == ITEM_SHIELD && glm_vec3_dot(fwd, dir) < -0.3f) {
+    if (g->action == ACT_BLOCK && (held_item(g) == ITEM_SHIELD || g->left == LEFT_SHIELD) && glm_vec3_dot(fwd, dir) < -0.3f) {
         dmg *= 0.15f;
         audio_play(SFX_BLOCK, 1.0f);
         vec3 hp;
@@ -591,6 +794,11 @@ void hurt_player(Game *g, vec3 from, float dmg)
         g->dead = true;
         g->dead_t = 0.0f;
         g->inv_open = false;
+        g->journal_open = false;
+        g->shop_npc = -1;
+        fishing_cancel(g);
+        if (g->boat_in >= 0)
+            boat_leave(g);
         audio_play(SFX_DIE, 1.0f);
         message(g, COL_RED, "You have fallen.");
     }
@@ -622,10 +830,14 @@ static void do_hit(Game *g, ItemId held)
         if (glm_vec3_dot(d, fwd) < 0.55f && len > 0.9f)
             continue;
         vec3 target = { c->pos[0], c->pos[1] + creature_height(c) * 0.5f, c->pos[2] };
-        if (!level_line_clear(&g->level, g->eye, target))
+        if (!level_line_clear(&g->level, g->head, target))
             continue;
 
         float amount = dmg * (0.85f + frand() * 0.3f);
+        if (held == ITEM_TRIDENT && (g->swimming || g->wading_sea || creature_aquatic(c)))
+            amount *= 2.0f;
+        if (held == ITEM_EMBER_BLADE && c->type != CR_IMP)
+            c->burn_t = 3.0f;
         if (frand() < 0.12f) {
             amount *= 2.0f;
             message(g, COL_GOLD, "A crushing blow!");
@@ -638,6 +850,25 @@ static void do_hit(Game *g, ItemId held)
     }
     if (hit)
         g->shake_t = fmaxf(g->shake_t, armed && ITEMS[held].damage > 30 ? 0.18f : 0.08f);
+
+    /* a spade in the sand: anything buried right here comes up */
+    if (held == ITEM_SPADE && !hit) {
+        vec3 at;
+        glm_vec3_copy(g->pos, at);
+        glm_vec3_muladds(fwd, 1.2f, at);
+        for (int i = 0; i < g->thing_count; i++) {
+            Thing *t = &g->things[i];
+            if (t->used && t->kind == THING_TREASURE && !t->done &&
+                (t->pos[0] - at[0]) * (t->pos[0] - at[0]) + (t->pos[2] - at[2]) * (t->pos[2] - at[2]) < 2.2f * 2.2f) {
+                thing_use(g, t);
+                return;
+            }
+        }
+        if (g->pos[1] < -0.7f) {
+            audio_play(SFX_DIG, 0.8f);
+            fx_dust(&g->ps, at, 4);
+        }
+    }
 }
 
 void explode(Game *g, vec3 at, float damage, float radius, bool hurts_player)
@@ -670,12 +901,12 @@ void explode(Game *g, vec3 at, float damage, float radius, bool hurts_player)
 
 static void cycle_left(Game *g)
 {
-    LeftHand order[3] = { LEFT_EMPTY, LEFT_TORCH, LEFT_LANTERN };
+    LeftHand order[4] = { LEFT_EMPTY, LEFT_TORCH, LEFT_LANTERN, LEFT_SHIELD };
     int at = g->left;
-    for (int k = 1; k <= 3; k++) {
-        LeftHand next = order[(at + k) % 3];
+    for (int k = 1; k <= 4; k++) {
+        LeftHand next = order[(at + k) % 4];
         if (next == LEFT_EMPTY || (next == LEFT_TORCH && has_item(g, ITEM_TORCH)) ||
-            (next == LEFT_LANTERN && has_item(g, ITEM_LANTERN))) {
+            (next == LEFT_LANTERN && has_item(g, ITEM_LANTERN)) || (next == LEFT_SHIELD && has_item(g, ITEM_SHIELD))) {
             g->left = next;
             break;
         }
@@ -684,8 +915,17 @@ static void cycle_left(Game *g)
         audio_play(SFX_TORCH_ON, 0.8f);
     else if (g->left == LEFT_LANTERN)
         audio_play(SFX_LANTERN, 1.0f);
-    else
+    else if (g->left == LEFT_SHIELD) {
+        audio_play(SFX_EQUIP, 0.8f);
+        message(g, COL_TEXT, "You strap the kite shield to your left arm. (hold right mouse to block)");
+    } else
         audio_play(SFX_TORCH_OFF, 0.5f);
+}
+
+/* spells cost less in a magister's robes */
+static float spell_cost(const Game *g, ItemId id)
+{
+    return ITEMS[id].mana * (g->equip[EQ_BODY] == ITEM_MAGISTER_ROBES ? 0.75f : 1.0f);
 }
 
 /* ---------- player actions ---------- */
@@ -704,6 +944,12 @@ void game_start_action(Game *g)
         g->action == ACT_USE || g->action == ACT_CAST)
         return;
     ItemId id = held_item(g);
+    if (id != ITEM_NONE && ITEMS[id].kind == KIND_ROD) {
+        fishing_start(g);       /* casting, hooking and reeling are the rod's own business */
+        return;
+    }
+    if (fishing_busy(g))
+        return;
     if (id != ITEM_NONE && g->cooldowns[id] > 0.0f) {
         if (ITEMS[id].kind != KIND_SPELL)
             message(g, COL_TEXT, "The %s isn't ready yet.", ITEMS[id].name);
@@ -724,7 +970,7 @@ void game_start_action(Game *g)
     case KIND_THROWN: begin(g, ACT_THROW, it->cooldown); break;
     case KIND_FOOD: begin(g, ACT_USE, it->cooldown); break;
     case KIND_SPELL:
-        if (g->mana < it->mana) {
+        if (g->mana < spell_cost(g, id)) {
             message(g, COL_MAGIC, "Not enough mana.");
             audio_play(SFX_NO_MANA, 1.0f);
             return;
@@ -735,9 +981,25 @@ void game_start_action(Game *g)
         message(g, COL_TEXT, "Heavy iron. It must fit a lock somewhere in these ruins.");
         break;
     case KIND_GADGET:
-        if (id == ITEM_BINOCULARS)
-            break;          /* held, not clicked */
+        if (id == ITEM_BINOCULARS || id == ITEM_MAGNIFIER)
+            break;          /* held up, not clicked */
+        if (id == ITEM_METAL_DETECTOR) {
+            message(g, COL_TEXT, "Sweep it over the sand and listen for the beeps.");
+            break;
+        }
         begin(g, ACT_USE, 0.5f);
+        break;
+    case KIND_ARMOR:
+        equip_item(g, id);
+        break;
+    case KIND_BAIT:
+        message(g, COL_TEXT, "Bait goes on the hook by itself: the best you carry, each cast.");
+        break;
+    case KIND_FISH:
+    case KIND_TREASURE:
+        begin(g, ACT_USE, 0.8f);
+        break;
+    case KIND_ROD:
         break;
     }
 }
@@ -752,7 +1014,7 @@ static void action_effect(Game *g)
         do_hit(g, id);
         break;
     case ACT_CAST:
-        g->mana -= ITEMS[id].mana;
+        g->mana -= spell_cost(g, id);
         g->cooldowns[id] = ITEMS[id].cooldown;
         magic_cast(g, ITEMS[id].spell);
         break;
@@ -786,6 +1048,11 @@ static void action_effect(Game *g)
             } else if (it->mana > 0) {
                 g->mana = fminf(g->max_mana, g->mana + it->mana);
                 message(g, COL_MAGIC, "Tastes of thunderstorms. (+%d mana)", (int)it->mana);
+            } else if (id == ITEM_LIME) {
+                g->hp = fminf(g->max_hp, g->hp + it->heal);
+                g->toxic = 0.0f;
+                g->sting_t = 0.0f;
+                message(g, COL_TEXT, "Your whole face puckers. The burning in your lungs is gone. (+%d health)", (int)it->heal);
             } else {
                 g->hp = fminf(g->max_hp, g->hp + it->heal);
                 message(g, COL_TEXT, "You eat the %s. (+%d health)", it->name, (int)it->heal);
@@ -825,6 +1092,74 @@ static void action_effect(Game *g)
                                              : "You fold the spectacles away.");
         } else if (id == ITEM_COMPASS) {
             message(g, COL_TEXT, "The needle trembles, pointing somewhere no map would.");
+        } else if (it->kind == KIND_FISH) {
+            Animal *w = animal_near(g, SPECIES_WALRUS, 4.0f);
+            if (w) {
+                animal_feed(g, w);
+                use_up(g, slot);
+            } else if (id == ITEM_FISH_PUFFER) {
+                audio_play(SFX_EAT, 1.0f);
+                hurt_player(g, g->pos, 20.0f);
+                g->toxic = fmaxf(g->toxic, 0.6f);
+                message(g, COL_RED, "Your tongue goes numb, then everything else does. You were warned.");
+                use_up(g, slot);
+            } else {
+                audio_play(SFX_EAT, 1.0f);
+                g->hp = fminf(g->max_hp, g->hp + it->heal);
+                message(g, COL_TEXT, "You eat the %s raw. Brave. (+%d health)", it->name, (int)it->heal);
+                use_up(g, slot);
+            }
+        } else if (id == ITEM_GNOME) {
+            vec3 fwd;
+            flat_forward(g, fwd);
+            glm_vec3_copy(g->pos, g->gnome_pos);
+            glm_vec3_muladds(fwd, 1.5f, g->gnome_pos);
+            g->gnome_pos[1] = ground_at(g, g->gnome_pos[0], g->gnome_pos[2], g->pos[1] + 0.5f);
+            g->gnome_t = 20.0f;
+            audio_play(SFX_GNOME, 1.0f);
+            message(g, COL_FUN, "You set the gnome down. Every creature nearby stops to stare at him.");
+        } else if (id == ITEM_UKULELE) {
+            g->ukulele_t = 6.0f;
+            audio_play(SFX_UKULELE, 1.0f);
+            animals_serenade(g);
+            for (int k = 0; k < g->npc_count; k++)
+                if (glm_vec3_distance(g->npcs[k].pos, g->pos) < 14.0f)
+                    g->npcs[k].dancing = true;
+        } else if (id == ITEM_SELKIE_SCALE || id == ITEM_GILL_PEARL || id == ITEM_DOLPHIN_CHARM || id == ITEM_ANGLER_LAMP) {
+            static const char *what[4] = {
+                "The scale sinks into your skin with a cold shiver. You'll swim like a seal now.",
+                "The pearl slides down like cold honey. Your lungs feel twice as deep.",
+                "You knot the charm at your throat. The sea feels friendly, and far less tiring.",
+                "The lamp's light seeps into your hands. The deep will glow around you now.",
+            };
+            int k = id == ITEM_SELKIE_SCALE ? 0 : id == ITEM_GILL_PEARL ? 1 : id == ITEM_DOLPHIN_CHARM ? 2 : 3;
+            if (k == 0) g->selkie = true;
+            if (k == 1) g->gill_pearl = true;
+            if (k == 2) g->dolphin = true;
+            if (k == 3) g->angler = true;
+            audio_play(SFX_QUEST, 1.0f);
+            message(g, COL_MAGIC, "%s", what[k]);
+            use_up(g, slot);
+        } else if (id == ITEM_FIRST_TIDE_EYE) {
+            g->first_tide = true;
+            audio_play(SFX_QUEST_DONE, 1.0f);
+            message(g, COL_GOLD, "The Eye opens. The sea is no longer something you're in; it's something you're part of.");
+            use_up(g, slot);
+        } else if (id == ITEM_BOTTLE) {
+            static const char *notes[5] = {
+                "Whoever finds this: the fish off the lighthouse only bite after dark, and only for glowing bait. -- B.",
+                "Day 40 at sea. The walruses have started whistling back at me. I think I'm winning the argument.",
+                "The Court was never drowned. It chose the sea. Remember that, if the bell rings again.",
+                "If found, please return to Coralie at the Curious Clam. She owes me eleven shells. -- a friend",
+                "Old Ember sleeps for half an hour at a time. Whatever it burns comes back. That's the Covenant.",
+            };
+            reading_show(g, "A note in a bottle", notes[(int)(frand() * 5) % 5]);
+            audio_play(SFX_PAGE, 1.0f);
+            use_up(g, slot);
+        } else if (id == ITEM_CONCH) {
+            quest_talk(g, NULL);    /* the conch is the quests' business (see quest.c) */
+        } else if (it->kind == KIND_TREASURE) {
+            message(g, COL_TEXT, "%s", it->desc);
         }
         break;
     }
@@ -858,7 +1193,7 @@ static void drop_item(Game *g)
 
 /* ---------- interaction ---------- */
 
-typedef enum { TGT_NONE, TGT_DOOR, TGT_CHEST, TGT_LIGHT, TGT_PICKUP, TGT_TOMB, TGT_NPC } TargetKind;
+typedef enum { TGT_NONE, TGT_DOOR, TGT_CHEST, TGT_LIGHT, TGT_PICKUP, TGT_TOMB, TGT_NPC, TGT_THING, TGT_BOAT, TGT_WALRUS } TargetKind;
 
 static TargetKind find_target(Game *g, int *index)
 {
@@ -869,17 +1204,17 @@ static TargetKind find_target(Game *g, int *index)
 
     #define CONSIDER(kind, i, point, radius, reach, need_los) do {                     \
         vec3 rel;                                                                      \
-        glm_vec3_sub(point, g->eye, rel);                                              \
+        glm_vec3_sub(point, g->head, rel);                                             \
         float t = glm_vec3_dot(rel, dir);                                              \
         if (t > 0.0f && t < (reach) && t < best_t) {                                   \
             vec3 closest;                                                              \
-            glm_vec3_copy(g->eye, closest);                                            \
+            glm_vec3_copy(g->head, closest);                                           \
             glm_vec3_muladds(dir, t, closest);                                         \
             if (glm_vec3_distance(closest, point) < (radius)) {                        \
                 vec3 near_pt;                                                          \
                 glm_vec3_copy(point, near_pt);                                         \
                 glm_vec3_muladds(dir, -0.35f, near_pt);                                \
-                if (!(need_los) || level_line_clear(&g->level, g->eye, near_pt)) {     \
+                if (!(need_los) || level_line_clear(&g->level, g->head, near_pt)) {    \
                     best = kind; best_t = t; *index = i;                               \
                 }                                                                      \
             }                                                                          \
@@ -916,8 +1251,33 @@ static TargetKind find_target(Game *g, int *index)
         CONSIDER(TGT_PICKUP, i, p, 0.6f, REACH, true);
     }
     for (int i = 0; i < g->npc_count; i++) {
-        vec3 p = { g->npcs[i].pos[0], g->npcs[i].pos[1] + 1.2f, g->npcs[i].pos[2] };
+        if (!npc_visible(g, &g->npcs[i]))
+            continue;
+        vec3 p = { g->npcs[i].pos[0], g->npcs[i].pos[1] + (g->npcs[i].swimming ? 0.2f : 1.2f), g->npcs[i].pos[2] };
         CONSIDER(TGT_NPC, i, p, 0.9f, REACH + 0.5f, false);
+    }
+    for (int i = 0; i < g->thing_count; i++) {
+        Thing *th = &g->things[i];
+        if (!th->used || !thing_prompt(g, th))
+            continue;
+        float r = th->kind == THING_SHELL ? 0.45f : th->kind == THING_WHIRLPOOL ? 3.0f : 0.8f;
+        vec3 tp;
+        glm_vec3_copy(th->pos, tp);
+        bool far_ok = th->kind == THING_WHIRLPOOL;
+        CONSIDER(TGT_THING, i, tp, r, REACH + (far_ok ? 8.0f : 0.3f), !far_ok);
+    }
+    for (int i = 0; i < g->boat_count; i++) {
+        if (g->boats[i].occupied)
+            continue;
+        vec3 p = { g->boats[i].pos[0], g->boats[i].pos[1] + 0.4f, g->boats[i].pos[2] };
+        CONSIDER(TGT_BOAT, i, p, 1.6f, REACH + 1.5f, false);
+    }
+    for (int i = 0; i < MAX_ANIMALS; i++) {
+        Animal *a = &g->animals[i];
+        if (!a->used || a->species != SPECIES_WALRUS || a->gone_t > 0.0f)
+            continue;
+        vec3 p = { a->pos[0], a->pos[1] + 0.5f, a->pos[2] };
+        CONSIDER(TGT_WALRUS, i, p, 1.0f, REACH + 0.5f, false);
     }
     #undef CONSIDER
     return best;
@@ -931,10 +1291,14 @@ static bool left_lit(const Game *g)
 static void update_prompt(Game *g)
 {
     g->prompt[0] = 0;
-    if (g->dead || g->inv_open || g->menu != MENU_NONE || g->cam.mode != CAM_FIRST_PERSON)
+    if (g->dead || g->inv_open || g->menu != MENU_NONE || g->cam.mode != CAM_FIRST_PERSON || g->shop_npc >= 0 || g->journal_open)
         return;
     int i;
     const char *key = g->pad ? "[X]" : "[E]";
+    if (g->boat_in >= 0) {
+        snprintf(g->prompt, sizeof g->prompt, "%s Step out of the boat", key);
+        return;
+    }
     switch (find_target(g, &i)) {
     case TGT_DOOR: {
         Door *d = &g->doors[i];
@@ -982,6 +1346,23 @@ static void update_prompt(Game *g)
     case TGT_NPC:
         snprintf(g->prompt, sizeof g->prompt, "%s Talk to %s", key, g->npcs[i].name[0] ? g->npcs[i].name : "them");
         break;
+    case TGT_THING: {
+        const char *what = thing_prompt(g, &g->things[i]);
+        if (what)
+            snprintf(g->prompt, sizeof g->prompt, "%s %s", key, what);
+        break;
+    }
+    case TGT_BOAT:
+        snprintf(g->prompt, sizeof g->prompt, "%s Climb into the rowing boat", key);
+        break;
+    case TGT_WALRUS: {
+        ItemId held = held_item(g);
+        if (held != ITEM_NONE && ITEMS[held].kind == KIND_FISH)
+            snprintf(g->prompt, sizeof g->prompt, "Click: feed the walrus your %s", ITEMS[held].name);
+        else
+            snprintf(g->prompt, sizeof g->prompt, "%s Pat the walrus", key);
+        break;
+    }
     default:
         break;
     }
@@ -991,6 +1372,10 @@ void game_interact(Game *g)
 {
     if (g->dead || g->cam.mode != CAM_FIRST_PERSON || g->menu != MENU_NONE)
         return;
+    if (g->boat_in >= 0) {
+        boat_leave(g);
+        return;
+    }
     int i;
     TargetKind t = find_target(g, &i);
     if (t == TGT_NONE)
@@ -1077,134 +1462,16 @@ void game_interact(Game *g)
         audio_play(SFX_PICKUP, 0.7f);
         p->used = false;
     } else if (t == TGT_NPC) {
-        npc_talk(g, &g->npcs[i]);
-    }
-}
-
-/* ---------- player ---------- */
-
-static bool in_water(const Game *g)
-{
-    return level_cell_at(&g->level, g->pos[0], g->pos[2]) == 'w' && g->pos[1] < WATER_Y;
-}
-
-static void splash(Game *g, vec3 at)
-{
-    Particle p = {0};
-    glm_vec3_copy((vec3){at[0] + frand() - 0.5f, WATER_Y, at[2] + frand() - 0.5f}, p.pos);
-    glm_vec3_copy((vec3){frand() - 0.5f, 1.2f + frand(), frand() - 0.5f}, p.vel);
-    glm_vec4_copy((vec4){0.5f, 0.6f, 0.65f, 0.5f}, p.color0);
-    glm_vec4_copy((vec4){0.5f, 0.6f, 0.65f, 0.0f}, p.color1);
-    p.size0 = 0.06f;
-    p.size1 = 0.02f;
-    p.max_life = p.life = 0.5f;
-    p.gravity = 9.0f;
-    particles_emit(&g->ps, &p);
-}
-
-static void update_player(Game *g, float dt)
-{
-    if (g->cam.mode != CAM_FIRST_PERSON)
-        return;
-    if (g->cam.flying) {
-        /* noclip: the camera moves itself */
-        glm_vec3_copy(g->eye, g->cam.position);
-        camera_update(&g->cam, dt);
-        glm_vec3_copy(g->cam.position, g->pos);
-        g->pos[1] -= EYE_HEIGHT;
-        glm_vec3_zero(g->vel);
-        return;
-    }
-
-    const bool *keys = SDL_GetKeyboardState(NULL);
-    bool control = !g->dead && !g->inv_open && g->menu == MENU_NONE;
-    vec3 fwd, right, wish = { 0, 0, 0 };
-    flat_forward(g, fwd);
-    glm_vec3_copy((vec3){-fwd[2], 0, fwd[0]}, right);
-    bool sprint = keys[SDL_SCANCODE_LSHIFT];
-    bool jump = false;
-    if (control) {
-        if (keys[SDL_SCANCODE_W]) glm_vec3_add(wish, fwd, wish);
-        if (keys[SDL_SCANCODE_S]) glm_vec3_sub(wish, fwd, wish);
-        if (keys[SDL_SCANCODE_D]) glm_vec3_add(wish, right, wish);
-        if (keys[SDL_SCANCODE_A]) glm_vec3_sub(wish, right, wish);
-        jump = keys[SDL_SCANCODE_SPACE];
-        if (keys[SDL_SCANCODE_C] || keys[SDL_SCANCODE_LCTRL])
-            g->crouching = true;
-        else if (!g->pad)
-            g->crouching = false;
-        if (g->pad) {
-            float lx = SDL_GetGamepadAxis(g->pad, SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
-            float ly = SDL_GetGamepadAxis(g->pad, SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;
-            if (fabsf(lx) > 0.15f) glm_vec3_muladds(right, lx, wish);
-            if (fabsf(ly) > 0.15f) glm_vec3_muladds(fwd, -ly, wish);
-            sprint |= SDL_GetGamepadButton(g->pad, SDL_GAMEPAD_BUTTON_LEFT_STICK);
-            jump |= SDL_GetGamepadButton(g->pad, SDL_GAMEPAD_BUTTON_SOUTH);
-        }
-    }
-    g->crouch_amount += ((g->crouching ? 1.0f : 0.0f) - g->crouch_amount) * (1.0f - expf(-dt * 12.0f));
-
-    float speed = sprint && !g->crouching ? 7.0f : 4.2f;
-    if (g->crouching) speed *= 0.5f;
-    if (g->action == ACT_BLOCK) speed *= 0.5f;
-    bool wading = in_water(g);
-    if (wading) speed *= 0.6f;
-    /* a full stick or two keys at once both mean full speed; a gentle push walks slower */
-    float len = glm_vec3_norm(wish);
-    if (len > 1e-3f)
-        glm_vec3_scale(wish, speed * fminf(len, 1.0f) / len, wish);
-
-    /* quick to change direction on the ground, sluggish in the air */
-    float k = 1.0f - expf(-dt * (g->on_ground ? 12.0f : 2.0f));
-    g->vel[0] += (wish[0] - g->vel[0]) * k;
-    g->vel[2] += (wish[2] - g->vel[2]) * k;
-
-    if (jump && g->on_ground && !g->crouching) {
-        g->vel[1] = 6.2f;
-        g->on_ground = false;
-        audio_play(SFX_JUMP, 0.6f);
-    }
-    g->vel[1] -= GRAVITY * dt;
-
-    g->pos[0] += g->vel[0] * dt;
-    g->pos[2] += g->vel[2] * dt;
-    level_collide(&g->level, g->pos, PLAYER_R, PLAYER_H - g->crouch_amount * 0.6f);
-
-    float feet = g->pos[1];
-    g->pos[1] += g->vel[1] * dt;
-    float ground = ground_at(g, g->pos[0], g->pos[2], feet);
-    if (g->pos[1] <= ground) {
-        if (!g->on_ground && g->vel[1] < -6.0f) {
-            g->land_t = glm_clamp(-g->vel[1] / 14.0f, 0.3f, 1.0f);
-            audio_play(wading ? SFX_STEP_WATER : SFX_LAND, g->land_t);
-            if (g->vel[1] < -15.0f)
-                hurt_player(g, (vec3){g->pos[0], g->pos[1] - 1, g->pos[2]}, (-g->vel[1] - 15.0f) * 4.0f);
-        }
-        g->pos[1] = ground;
-        g->vel[1] = 0.0f;
-        g->on_ground = true;
-    } else {
-        g->on_ground = g->pos[1] - ground < 0.05f;
-    }
-
-    /* footsteps: stone, grass, or splashing through water */
-    if (g->on_ground) {
-        float moved = sqrtf(g->vel[0] * g->vel[0] + g->vel[2] * g->vel[2]) * dt;
-        g->step_dist += moved;
-        if (g->step_dist > (g->crouching ? 1.4f : 1.9f)) {
-            g->step_dist = 0.0f;
-            float vol = g->crouching ? 0.35f : sprint ? 1.0f : 0.7f;
-            if (wading) {
-                audio_play(SFX_STEP_WATER, vol);
-                for (int s = 0; s < 6; s++)
-                    splash(g, g->pos);
-            } else {
-                bool stone = level_ground(&g->level, g->pos[0], g->pos[2], g->pos[1], STEP) > -999.0f;
-                audio_play(stone ? SFX_STEP_STONE : SFX_STEP_GRASS, vol);
-            }
-        }
-        if (wading && moved > 0.0f && frand() < dt * 12.0f)
-            splash(g, g->pos);
+        quest_talk(g, &g->npcs[i]);     /* the quests get first say; then chat, or a shop */
+    } else if (t == TGT_THING) {
+        thing_use(g, &g->things[i]);
+    } else if (t == TGT_BOAT) {
+        boat_board(g, i);
+    } else if (t == TGT_WALRUS) {
+        Animal *a = &g->animals[i];
+        a->whistle_t = 2.6f;
+        audio_play_at(SFX_WALRUS_WHISTLE, a->pos, 1.0f);
+        message(g, COL_FUN, "The walrus puckers up and whistles at you, delighted.");
     }
 }
 
@@ -1212,9 +1479,16 @@ static void update_actions(Game *g, float dt)
 {
     ItemId held = held_item(g);
 
-    /* held actions: shield up, binoculars to the eyes */
+    /* the shield in the hotbar goes on the left arm */
+    if (held == ITEM_SHIELD && g->left != LEFT_SHIELD)
+        g->left = LEFT_SHIELD;
+    if (g->left == LEFT_SHIELD && !has_item(g, ITEM_SHIELD))
+        g->left = LEFT_EMPTY;
+
+    /* held actions: shield up, binoculars or the magnifying glass to the eyes */
     bool hold_block = !g->dead && !g->inv_open &&
-                      ((held == ITEM_SHIELD && g->rmb) || (held == ITEM_BINOCULARS && (g->lmb || g->rmb)));
+                      ((g->left == LEFT_SHIELD && g->rmb && held != ITEM_BINOCULARS && held != ITEM_HARPOON) ||
+                       ((held == ITEM_BINOCULARS || held == ITEM_MAGNIFIER) && (g->lmb || g->rmb)));
     if (g->action == ACT_BLOCK && !hold_block)
         g->action = ACT_IDLE;
     if (g->action == ACT_IDLE && hold_block)
@@ -1243,9 +1517,10 @@ static void update_actions(Game *g, float dt)
     if (g->specs_on && !has_item(g, ITEM_SPECTACLES))
         g->specs_on = false;
 
-    /* mana trickles back */
+    /* mana trickles back (faster under a magister's hat or cape) */
+    float regen = 5.0f * (g->equip[EQ_HEAD] == ITEM_WIZARD_HAT ? 2.0f : 1.0f) * (g->equip[EQ_BACK] == ITEM_STARRY_CAPE ? 1.5f : 1.0f);
     if (!g->dead)
-        g->mana = fminf(g->max_mana, g->mana + dt * 5.0f);
+        g->mana = fminf(g->max_mana, g->mana + dt * regen);
 }
 
 static void update_grenades(Game *g, float dt)
@@ -1288,6 +1563,80 @@ static void update_grenades(Game *g, float dt)
     }
 }
 
+/* ---------- the world's dangers, and things that wear off ---------- */
+
+static void update_hazards(Game *g, float dt)
+{
+    g->gills_t = fmaxf(0.0f, g->gills_t - dt);
+    g->shadow_t = fmaxf(0.0f, g->shadow_t - dt);
+    g->gnome_t = fmaxf(0.0f, g->gnome_t - dt);
+    g->sting_t = fmaxf(0.0f, g->sting_t - dt);
+    if (g->ukulele_t > 0.0f && (g->ukulele_t -= dt) <= 0.0f)
+        for (int i = 0; i < g->npc_count; i++)
+            g->npcs[i].dancing = false;
+
+    /* volcanic fumes: choking, unless you wear the gas mask */
+    float fumes = vent_fumes(g, g->head);
+    static float warned;
+    warned -= dt;
+    if (fumes > 0.05f && !g->mask_on && !g->dead) {
+        g->toxic = fminf(1.0f, g->toxic + dt * (0.25f + fumes * 0.8f));
+        if (g->toxic > 0.3f && frand() < dt * 1.3f) {
+            hurt_player(g, g->pos, 2.0f + 5.0f * fumes);
+            audio_play(SFX_COUGH, 0.8f);
+        }
+        if (warned <= 0.0f) {
+            message(g, COL_RED, "The fumes burn your throat and eyes! A gas mask would keep them out.");
+            warned = 8.0f;
+        }
+    } else {
+        g->toxic = fmaxf(0.0f, g->toxic - dt * 0.3f);
+    }
+
+    /* hail stings on bare heads out in the open */
+    if (g->weather.hail > 0.4f && !g->dead && level_sky_exposure(&g->level, g->head) > 0.5f && !g->underwater) {
+        ItemId hat = g->equip[EQ_HEAD];
+        bool covered = hat == ITEM_IRON_HELM || hat == ITEM_DIVING_HELM || hat == ITEM_FUR_HAT ||
+                       g->equip[EQ_BACK] == ITEM_FUR_CLOAK || g->boat_in >= 0;
+        if ((g->hail_t += dt) > 1.6f) {
+            g->hail_t = 0.0f;
+            audio_play(SFX_HAILSTONE, 0.7f);
+            if (!covered) {
+                hurt_player(g, (vec3){g->pos[0], g->pos[1] + 3.0f, g->pos[2]}, 2.0f);
+                static float told;
+                if (g->time - told > 30.0f) {
+                    message(g, COL_RED, "Hailstones crack against your skull. Get under a roof, or a helmet.");
+                    told = g->time;
+                }
+            }
+        }
+    }
+
+    /* buoys ride the swell */
+    for (int i = 0; i < g->prop_count; i++) {
+        Prop *p = &g->props[i];
+        if (!p->floats)
+            continue;
+        float surface, depth;
+        if (!sea_at(g, p->pos[0], p->pos[2], &surface, &depth))
+            continue;
+        p->pos[1] = surface - 0.6f;
+        p->pitch = sinf(g->time * 1.1f + p->pos[0]) * 0.08f;
+        p->roll = cosf(g->time * 0.9f + p->pos[2]) * 0.08f;
+        prop_place(g, p);
+    }
+    /* plants burnt by the eruption grow back */
+    for (int i = 0; i < g->prop_count; i++) {
+        Prop *p = &g->props[i];
+        if (p->burns && p->growth < 1.0f && g->volcano.phase != VOLC_ERUPTING && g->volcano.phase != VOLC_ASH) {
+            p->growth = fminf(1.0f, p->growth + dt * 0.08f);
+            transform_matrix(&p->xf, p->matrix);
+            glm_scale_uni(p->matrix, fmaxf(p->growth, 0.001f));
+            prop_bounds(g, p);
+        }
+    }
+}
+
 /* ---------- update ---------- */
 
 static void update_camera(Game *g, float dt)
@@ -1304,9 +1653,15 @@ static void update_camera(Game *g, float dt)
     glm_perspective(glm_rad(g->settings.fov), aspect, 0.01f, 10.0f, g->hand_proj);
 
     if (g->cam.mode == CAM_FIRST_PERSON) {
-        float dead_drop = g->dead ? fminf(g->dead_t * 1.5f, 1.3f) : 0.0f;
-        glm_vec3_copy(g->pos, g->eye);
-        g->eye[1] += EYE_HEIGHT - dead_drop - g->land_t * 0.12f - g->crouch_amount * 0.6f;
+        float dead_drop = g->dead && !g->third_person ? fminf(g->dead_t * 1.5f, 1.3f) : 0.0f;
+        glm_vec3_copy(g->pos, g->head);
+        g->head[1] += EYE_HEIGHT - g->land_t * 0.12f - g->crouch_amount * 0.6f;
+        if (g->swimming)
+            g->head[1] -= 0.2f;
+        glm_vec3_copy(g->head, g->eye);
+        g->eye[1] -= dead_drop;
+        if (g->third_person)
+            player_third_camera(g, dt);
         if (g->shake_t > 0.0f) {
             float s = g->shake_t * 0.12f;
             g->eye[0] += (frand() - 0.5f) * s;
@@ -1315,10 +1670,12 @@ static void update_camera(Game *g, float dt)
         }
         glm_vec3_copy(g->eye, g->cam.position);
     } else {
+        glm_vec3_copy(g->pos, g->head);
+        g->head[1] += EYE_HEIGHT;
         camera_eye(&g->cam, g->eye);
     }
     camera_view(&g->cam, g->view);
-    if (g->dead && g->cam.mode == CAM_FIRST_PERSON) {
+    if (g->dead && g->cam.mode == CAM_FIRST_PERSON && !g->third_person) {
         mat4 roll;
         glm_rotate_make(roll, fminf(g->dead_t, 1.0f) * 1.2f, (vec3){0, 0, 1});
         glm_mat4_mul(roll, g->view, g->view);
@@ -1411,24 +1768,69 @@ static void update_audio(Game *g)
     float yaw = g->cam.mode == CAM_FIRST_PERSON ? g->cam.fp_yaw : g->cam.yaw;
     audio_set_listener(g->eye, yaw);
 
-    Area area = level_area(&g->level, g->eye);
+    Area area = level_area(&g->level, g->head);
     WeatherType w = g->weather.type;
     AudioScene sc = {
         .boombox = g->boombox_t > 0.0f,
         .slowmo = g->slow_t > 0.0f,
         .underground = area == AREA_CRYPT,
-        .rain = g->weather.rain,
+        .rain = g->weather.rain * (area == AREA_UNDERSEA ? 0.0f : 1.0f),
         .sheltered = g->eye[1] < level_cover(&g->level, g->eye[0], g->eye[2]) - 0.3f ? 1.0f : 0.0f,
+        .submerged = g->underwater,
+        .wind = g->weather.wind > 0.35f ? g->weather.gust : 0.0f,
+        .hail = g->weather.hail,
+        .groove = (int)(g->boombox_t > 0.0f ? g->quest.fish_caught % 3 : 0),
     };
     switch (area) {
     case AREA_CRYPT: sc.mood = MOOD_CRYPT; break;
     case AREA_PALACE: sc.mood = MOOD_PALACE; break;
     case AREA_GARDEN: sc.mood = g->night ? MOOD_NIGHT : MOOD_GARDEN; break;
     case AREA_LIBRARY: sc.mood = MOOD_LIBRARY; break;
+    case AREA_BEACH: case AREA_PROMENADE: sc.mood = g->night ? MOOD_NIGHT : MOOD_BEACH; break;
+    case AREA_MARINA: sc.mood = MOOD_MARINA; break;
+    case AREA_VILLAGE: sc.mood = MOOD_VILLAGE; break;
+    case AREA_VOLCANO: sc.mood = MOOD_VOLCANO; break;
+    case AREA_OCEAN: sc.mood = MOOD_OCEAN; break;
+    case AREA_UNDERSEA: sc.mood = MOOD_UNDERSEA; break;
     default:
         sc.mood = g->night ? MOOD_NIGHT : (w == WEATHER_RAIN || w == WEATHER_STORM) ? MOOD_RAIN
                 : w == WEATHER_FOG ? MOOD_NIGHT : MOOD_DAY;
         break;
+    }
+    if (g->boat_in >= 0 || (g->swimming && area != AREA_MARINA))
+        sc.mood = MOOD_OCEAN;
+    /* inside the shop and the tavern, their own records play */
+    if (glm_vec3_distance(g->head, (vec3){SHOP_X, g->head[1], SHOP_Z}) < 5.0f)
+        sc.mood = MOOD_SHOP;
+    if (fabsf(g->head[0] - TAVERN_X) < TAVERN_W * 0.5f && fabsf(g->head[2] - TAVERN_Z) < TAVERN_D * 0.5f && g->head[1] < VILLAGE_Y + 4.0f)
+        sc.mood = MOOD_TAVERN;
+    Npc *ancient = npc_find(g, NPC_ANCIENT);
+    if (ancient && npc_visible(g, ancient) && glm_vec3_distance(ancient->pos, g->pos) < 18.0f)
+        sc.mood = MOOD_ANCIENT;
+    if (g->quest.bell_home && g->quest.bell_ring_t > 0.0f && area == AREA_VILLAGE)
+        sc.mood = MOOD_FESTIVAL;
+    if (g->volcano.phase == VOLC_ERUPTING || (g->volcano.phase == VOLC_STIRRING && area == AREA_VOLCANO))
+        sc.mood = MOOD_ERUPTION;
+
+    /* surf breaking along the shore, from the side the sea is on */
+    float c = g->head[2] - coast_z(g->head[0]);
+    sc.surf = glm_clamp(1.0f - fabsf(c - 26.0f) / 45.0f, 0.0f, 1.0f) * (g->head[1] > SEA_Y - 1.0f ? 1.0f : 0.0f);
+    if (area == AREA_MARINA)
+        sc.surf *= 0.4f;
+    sc.surf *= 0.6f + storm_level(g) * 0.8f;
+    sc.surf_pan = -sinf(yaw);       /* the sea lies to the south */
+    sc.harbour = area == AREA_MARINA ? 1.0f : 0.0f;
+    sc.chimes = area == AREA_VILLAGE ? 0.5f + g->weather.wind * 0.8f : 0.0f;
+    float vd = sqrtf((g->head[0] - VOLCANO_X) * (g->head[0] - VOLCANO_X) + (g->head[2] - VOLCANO_Z) * (g->head[2] - VOLCANO_Z));
+    sc.volcano = glm_clamp(1.0f - vd / 450.0f, 0.0f, 1.0f) * (g->volcano.phase == VOLC_STIRRING ? 1.0f : g->volcano.phase == VOLC_ERUPTING ? 1.4f : 0.25f);
+    sc.lava = glm_clamp(1.0f - vd / 60.0f, 0.0f, 1.0f) * (g->head[1] > 60.0f ? 1.0f : 0.0f);
+    if (g->weather.twister) {
+        vec3 d;
+        glm_vec3_sub(g->weather.twister_pos, g->head, d);
+        d[1] = 0;
+        float dist = glm_vec3_norm(d);
+        sc.tornado = glm_clamp(1.0f - dist / 260.0f, 0.0f, 1.0f) * g->weather.twister_power;
+        sc.tornado_pan = dist > 0.5f ? glm_vec3_dot(d, (vec3){cosf(yaw), 0, -sinf(yaw)}) / dist : 0.0f;
     }
 
     for (int i = 0; i < MAX_CREATURES; i++) {
@@ -1437,6 +1839,8 @@ static void update_audio(Game *g)
             glm_vec3_distance(c->pos, g->pos) < 30.0f)
             sc.danger = 1.0f;
     }
+    if (g->shadow_t > 0.0f)
+        sc.danger = 0.0f;
 
     /* the nearest crackling fire, panned to where it is */
     vec3 right = { cosf(yaw), 0, -sinf(yaw) };
@@ -1501,19 +1905,28 @@ void game_update(Game *g, float dt, SDL_Window *win)
         g->hp = fminf(g->max_hp, g->hp + 2.5f * dt);
 
     gamepad_update(g, dt);
-    update_player(g, dt);
+    player_move(g, dt);
     update_actions(g, dt);
     update_grenades(g, dt);
     creatures_update(g, dt);
     magic_update(g, dt);
     npcs_update(g, dt);
+    animals_update(g, dt);
+    things_update(g, dt);
+    boats_update(g, dt);
+    fishing_update(g, dt);
+    volcano_update(g, dt);
+    quest_update(g, dt);
+    update_hazards(g, dt);
 
     WeatherType before = g->weather.type;
     weather_update(&g->weather, dt, g->eye, &g->level, &g->terrain, &g->ps);
     if (g->weather.type != before) {
         static const char *notes[WEATHER_COUNT] = {
             "Rain begins to fall.", "Thunder rolls in over the hills.", "A thick fog creeps between the stones.",
-            "The clouds break. The sky clears.",
+            "The clouds break. The sky clears.", "The wind rises to a gale, howling over the stones.",
+            "Hail comes rattling down out of a bruised sky. Find a roof, or a helmet.",
+            "The sky turns a sick green. Out on the land, a funnel reaches down from the clouds...",
         };
         message(g, COL_FUN, "%s", notes[g->weather.type]);
     }
@@ -1546,6 +1959,7 @@ void game_update(Game *g, float dt, SDL_Window *win)
     }
 
     update_camera(g, dt);
+    avatar_update(g, dt);
     emit_effects(g, dt);
     particles_update(&g->ps, dt);
     update_prompt(g);
@@ -1559,13 +1973,18 @@ void game_update(Game *g, float dt, SDL_Window *win)
     in.left = g->left;
     in.reach_t = g->reach_t;
     in.speed = sqrtf(g->vel[0] * g->vel[0] + g->vel[2] * g->vel[2]);
-    in.grounded = g->on_ground;
+    in.grounded = g->on_ground && !g->swimming;
+    in.swimming = g->swimming;
+    in.swim_phase = g->swim_phase;
+    in.body_armor = g->equip[EQ_BODY];
+    in.fishing = g->fish.state;
+    in.mask_on = g->mask_on;
     in.look_dx = g->look_dx;
     in.look_dy = g->look_dy;
     in.hurt = g->hurt_t / 0.45f;
     in.land = g->land_t;
-    if (in.held == ITEM_TORCH || in.held == ITEM_LANTERN)
-        in.held = ITEM_NONE;        /* lights are carried in the left hand */
+    if (in.held == ITEM_TORCH || in.held == ITEM_LANTERN || in.held == ITEM_SHIELD)
+        in.held = ITEM_NONE;        /* lights and the shield are carried in the left hand */
     g->look_dx = g->look_dy = 0.0f;
     mat4 inv_view;
     glm_mat4_inv(g->view, inv_view);
@@ -1578,7 +1997,8 @@ void game_update(Game *g, float dt, SDL_Window *win)
 
 static void set_mouse_mode(Game *g, SDL_Window *win)
 {
-    SDL_SetWindowRelativeMouseMode(win, g->cam.mode == CAM_FIRST_PERSON && !g->inv_open && g->menu == MENU_NONE);
+    SDL_SetWindowRelativeMouseMode(win, g->cam.mode == CAM_FIRST_PERSON && !g->inv_open && g->menu == MENU_NONE &&
+                                        g->shop_npc < 0 && !g->journal_open);
 }
 
 /* inventory layout, shared by drawing and clicking */
@@ -1681,6 +2101,13 @@ bool game_event(Game *g, const SDL_Event *e, SDL_Window *win)
     /* the pause menu takes everything while it's open */
     if (g->menu != MENU_NONE)
         return menu_event(g, e, win);
+    /* then a shop, if one is open */
+    if (g->shop_npc >= 0) {
+        if (shop_event(g, e)) {
+            set_mouse_mode(g, win);
+            return true;
+        }
+    }
 
     switch (e->type) {
     case SDL_EVENT_KEY_DOWN:
@@ -1688,14 +2115,37 @@ bool game_event(Game *g, const SDL_Event *e, SDL_Window *win)
             break;
         switch (e->key.key) {
         case SDLK_ESCAPE:
-            if (g->inv_open)
+            if (g->reading_t > 0.0f)
+                g->reading_t = 0.0f;
+            else if (g->journal_open) {
+                g->journal_open = false;
+                set_mouse_mode(g, win);
+            } else if (g->inv_open)
                 toggle_inventory(g, win);
             else
                 menu_open(g, win);
             break;
+        case SDLK_J:
+            if (!g->dead) {
+                g->journal_open = !g->journal_open;
+                g->inv_open = false;
+                audio_play(SFX_PAGE, 1.0f);
+                set_mouse_mode(g, win);
+            }
+            break;
+        case SDLK_F10: toggle_view(g, win); break;
+        case SDLK_F4: volcano_force(g); break;
+        case SDLK_EQUALS: g->cam_dist = fmaxf(1.6f, g->cam_dist - 0.5f); break;
+        case SDLK_MINUS: g->cam_dist = fminf(9.0f, g->cam_dist + 0.5f); break;
         case SDLK_TAB:
         case SDLK_I: toggle_inventory(g, win); break;
-        case SDLK_V: toggle_view(g, win); break;
+        case SDLK_V:
+            if (g->cam.mode == CAM_FIRST_PERSON && !g->dead) {
+                g->third_person = !g->third_person;
+                message(g, COL_TEXT, g->third_person ? "Third person. (V: back to your own eyes, -/=: camera distance)"
+                                                     : "First person.");
+            }
+            break;
         case SDLK_H:
             menu_open(g, win);
             g->menu = MENU_CONTROLS;
@@ -1709,7 +2159,12 @@ bool game_event(Game *g, const SDL_Event *e, SDL_Window *win)
             audio_toggle_music();
             message(g, COL_TEXT, audio_music_on() ? "Music on." : "Music off.");
             break;
-        case SDLK_E: if (!g->inv_open) game_interact(g); break;
+        case SDLK_E:
+            if (g->reading_t > 0.0f)
+                g->reading_t = 0.0f;
+            else if (!g->inv_open)
+                game_interact(g);
+            break;
         case SDLK_T: cycle_left(g); break;
         case SDLK_G: if (!g->inv_open) drop_item(g); break;
         case SDLK_R:
@@ -1815,6 +2270,18 @@ bool game_event(Game *g, const SDL_Event *e, SDL_Window *win)
                 game_start_action(g);
         } else if (e->button.button == SDL_BUTTON_RIGHT) {
             g->rmb = true;
+            if (held_item(g) == ITEM_HARPOON && g->cam.mode == CAM_FIRST_PERSON && !g->dead && g->cooldowns[ITEM_HARPOON] <= 0.0f) {
+                /* throw the harpoon along your aim */
+                vec3 dir, from, vel;
+                look_dir(g, dir);
+                glm_vec3_copy(g->head, from);
+                glm_vec3_muladds(dir, 0.5f, from);
+                glm_vec3_scale(dir, 24.0f, vel);
+                vel[1] += 1.5f;
+                bolt_fire(g, BOLT_HARPOON, from, vel, false);
+                audio_play(SFX_THROW, 1.0f);
+                use_up(g, g->selected);
+            }
         }
         if (g->cam.mode == CAM_ORBIT)
             camera_event(&g->cam, e);
@@ -1879,6 +2346,9 @@ static void gather_lights(Game *g)
     }
     if (g->wisp)
         renderer_add_light(r, g->wisp_pos, (vec3){5.0f, 5.5f, 7.5f}, 14.0f);
+    /* the angler's lamp: the deep glows around you */
+    if (g->angler && g->underwater)
+        renderer_add_light(r, g->head, (vec3){1.5f, 4.0f, 4.5f}, 16.0f);
     if (g->flash_t > 0.0f) {
         float f = g->flash_t / 0.4f;
         renderer_add_light(r, (vec3){g->flash_pos[0], g->flash_pos[1] + 1, g->flash_pos[2]},
@@ -1942,6 +2412,41 @@ static void gather_lights(Game *g)
             radius = 16.0f;
             f = 0.97f + 0.03f * f;
             break;
+        case LIGHT_LAMP:
+            glm_vec3_copy((vec3){5.5f, 3.8f, 1.8f}, c);
+            radius = 11.0f;
+            f = 0.97f + 0.03f * f;
+            break;
+        case LIGHT_PAPER: {
+            /* soft pinks, teals and golds, each lantern its own */
+            static const float tints[3][3] = { { 4.0f, 1.6f, 2.0f }, { 1.2f, 3.4f, 3.6f }, { 4.4f, 3.0f, 1.0f } };
+            int k = (int)l->seed % 3;
+            glm_vec3_copy((vec3){tints[k][0], tints[k][1], tints[k][2]}, c);
+            radius = 8.0f;
+            f = 0.9f + 0.1f * f;
+            break;
+        }
+        case LIGHT_BEACON:
+            glm_vec3_copy((vec3){40.0f, 34.0f, 20.0f}, c);
+            radius = 30.0f;
+            f = 1.0f;
+            break;
+        case LIGHT_CORAL: {
+            float pulse = 0.8f + 0.2f * sinf(t * 1.3f + l->seed);
+            glm_vec3_copy(((int)l->seed % 2) ? (vec3){1.0f, 4.5f, 4.2f} : (vec3){4.2f, 1.5f, 3.0f}, c);
+            radius = 10.0f;
+            f = pulse;
+            break;
+        }
+        case LIGHT_FORGE:
+            glm_vec3_copy((vec3){12.0f, 4.5f, 1.0f}, c);
+            radius = 10.0f;
+            break;
+        case LIGHT_EMBER:
+            glm_vec3_copy((vec3){24.0f, 7.0f, 1.2f}, c);
+            radius = 26.0f;
+            f = 0.9f + 0.1f * f;
+            break;
         default:
             p[1] += 0.6f;
             glm_vec3_copy((vec3){16.0f, 7.5f, 2.5f}, c);
@@ -1960,16 +2465,28 @@ static void draw_things(Game *g, GLuint prog, mat4 vp, bool depth)
     mat4 ident = GLM_MAT4_IDENTITY_INIT;
     model_draw(&g->level.geometry, NULL, prog, vp, ident, &dp);
 
-    /* skip what the camera (or, for shadows, the sun) can't see */
+    world_draw(&g->world, prog, vp, g->eye, depth);
+
+    /* skip what the camera (or, for shadows, the sun) can't see; big things carry further */
     Frustum fr;
     frustum_from(vp, &fr);
     float far = depth ? 55.0f : 100.0f;
-    #define VISIBLE(c, r) (glm_vec3_distance(c, g->eye) < far + (r) && frustum_sphere(&fr, c, r))
+    #define VISIBLE(c, r) (glm_vec3_distance(c, g->eye) < far + (r) * (depth ? 1.0f : 6.0f) && frustum_sphere(&fr, c, r))
     for (int i = 0; i < g->prop_count; i++) {
         Prop *p = &g->props[i];
-        if ((depth && p->no_shadow) || !VISIBLE(p->center, p->radius))
+        if ((depth && p->no_shadow) || !VISIBLE(p->center, p->radius) || (p->burns && p->growth < 0.02f))
             continue;
         model_draw(&g->prop_models[p->model], NULL, prog, vp, p->matrix, &dp);
+    }
+    if (g->gnome_t > 0.0f) {
+        mat4 gx;
+        glm_translate_make(gx, g->gnome_pos);
+        glm_rotate_y(gx, g->time * 0.3f, gx);
+        mat4 fit;
+        model_fit(&ITEMS[ITEM_GNOME].model, 0.6f, fit);
+        glm_translate(gx, (vec3){0, 0.3f, 0});
+        glm_mat4_mul(gx, fit, gx);
+        model_draw(&ITEMS[ITEM_GNOME].model, NULL, prog, vp, gx, &dp);
     }
 
     for (int i = 0; i < g->door_count; i++) {
@@ -2057,6 +2574,15 @@ static void draw_things(Game *g, GLuint prog, mat4 vp, bool depth)
     creatures_draw(g, prog, vp, depth);
     npcs_draw(g, prog, vp, depth);
     magic_draw(g, prog, vp, depth);
+    spells_draw(g, prog, vp, depth);
+    animals_draw(g, prog, vp, depth);
+    things_draw(g, prog, vp, depth);
+    boats_draw(g, prog, vp, depth);
+    /* your own body: its shadow always, the body itself when you're looking from outside */
+    if (g->cam.mode == CAM_FIRST_PERSON && (depth || g->third_person) && !g->cam.flying)
+        avatar_draw(g, prog, vp, depth);
+    if (!depth)
+        fishing_draw(g, prog, vp);
 }
 
 void game_render_world(Game *g)
@@ -2064,6 +2590,11 @@ void game_render_world(Game *g)
     Renderer *r = &g->r;
     Environment base = base_env(g->night), env;
     weather_apply(&g->weather, &base, &env);
+    volcano_environment(g, &env);
+    bool court = level_area(&g->level, g->eye) == AREA_UNDERSEA;
+    float surface, depth;
+    bool under = sea_at(g, g->eye[0], g->eye[2], &surface, &depth) && g->eye[1] < surface - 0.02f;
+    renderer_set_sea(r, SEA_Y, under || court ? 1.0f : 0.0f, g->volcano.ash, court ? 1.0f : 0.0f);
     renderer_set_environment(r, &env, g->time);
     renderer_set_camera(r, g->view, g->proj, g->eye);
     renderer_set_camera_sky(r, level_sky_exposure(&g->level, g->eye));
@@ -2077,13 +2608,17 @@ void game_render_world(Game *g)
     /* near things first, the big terrain after: hidden ground is then skipped by the
      * depth test instead of being shaded and painted over */
     draw_things(g, g->model_prog, r->frame.view_proj, false);
-    if (g->eye[1] > FLOOR_Y - 1.5f)         /* from the crypt you can't see the ground above */
+    if (level_area(&g->level, g->eye) != AREA_CRYPT)     /* from the crypt you can't see the ground above */
         terrain_draw(&g->terrain, g->terrain_prog, r->frame.view_proj);
+    world_draw_lava(&g->world, r->frame.view_proj);
 
-    /* water last, see-through over everything solid */
+    /* water last, see-through over everything solid: the flooded hall, then the sea */
     mat4 ident = GLM_MAT4_IDENTITY_INIT;
     DrawParams water = { .no_material = true };
     model_draw(&g->level.water, NULL, g->water_prog, r->frame.view_proj, ident, &water);
+    ocean_draw(&g->ocean, g->eye, r->frame.view_proj, g->time, storm_level(g));
+    slimes_draw(g, r->frame.view_proj);
+    weather_draw_twister(&g->weather, r->frame.view_proj);
 }
 
 /* ---------- HUD ---------- */
@@ -2153,7 +2688,7 @@ static void draw_hud(Game *g)
     if (g->title_t < 8.0f) {
         float a = fminf(g->title_t / 1.0f, 1.0f) * fminf((8.0f - g->title_t) / 2.0f, 1.0f);
         const char *title = "The Ruins of Bsg";
-        const char *sub = "Explore the halls. Wake the tombs. Visit the king.";
+        const char *sub = "Explore the halls. Wake the tombs. Visit the king. Then find the sea.";
         faded(COL_GOLD, a, col);
         ui_text_shadow(FONT_LARGE, (w - ui_text_width(FONT_LARGE, title)) * 0.5f, h * 0.22f, col, title);
         faded(COL_TEXT, a, col);
@@ -2243,6 +2778,37 @@ static void draw_hud(Game *g)
     snprintf(label, sizeof label, "Mana  %d / %d", (int)g->mana, (int)g->max_mana);
     bar(bx, by + 30, 280, 22, g->mana / g->max_mana, BLUE, label);
 
+    /* swimming: how long before you tire, and your breath while under */
+    if (g->swimming || g->stamina < g->max_stamina - 0.5f) {
+        static const float GREEN[4] = { 0.25f, 0.7f, 0.35f, 0.95f };
+        snprintf(label, sizeof label, g->stamina > 0.0f ? "Stamina" : "Exhausted!");
+        bar(bx + 290, by + 30, 200, 22, g->stamina / g->max_stamina, GREEN, label);
+    }
+    if (g->underwater || g->breath < g->max_breath - 0.2f) {
+        /* a row of bubbles, bursting one by one */
+        int bubbles = (int)ceilf(g->breath / g->max_breath * 10.0f);
+        for (int k = 0; k < 10; k++) {
+            float bubble[4] = { 0.7f, 0.9f, 1.0f, k < bubbles ? 0.9f : 0.15f };
+            ui_rect(bx + 290 + k * 20, by + 2, 14, 14, bubble);
+            ui_frame(bx + 290 + k * 20, by + 2, 14, 14, 1, COL_EDGE);
+        }
+    }
+    /* shells, the coast's money */
+    {
+        static const float SHELL_COL[SHELL_KINDS][4] = {
+            { 0.95f, 0.93f, 0.88f, 1 }, { 1.0f, 0.62f, 0.72f, 1 }, { 0.5f, 0.75f, 1.0f, 1 }, { 1.0f, 0.8f, 0.3f, 1 } };
+        float sx = bx, sy = by - 58;
+        for (int k = 0; k < SHELL_KINDS; k++) {
+            char n[16];
+            snprintf(n, sizeof n, "%d", g->shells[k]);
+            ui_rect(sx, sy + 5, 12, 12, SHELL_COL[k]);
+            sx += 16 + ui_text_shadow(FONT_SMALL, sx + 16, sy, COL_TEXT, n) + 12;
+        }
+        char worth[40];
+        snprintf(worth, sizeof worth, "shells  (worth %d)", shell_total(g));
+        ui_text_shadow(FONT_SMALL, sx, sy, COL_EDGE, worth);
+    }
+
     /* active effects */
     char fx[200] = "";
     if (g->slow_t > 0) snprintf(fx + strlen(fx), sizeof fx - strlen(fx), "Time slowed %.0fs   ", ceilf(g->slow_t));
@@ -2251,12 +2817,16 @@ static void draw_hud(Game *g)
     if (g->mask_on) strncat(fx, "Gas mask   ", sizeof fx - strlen(fx) - 1);
     if (g->specs_on) strncat(fx, "Spectacles   ", sizeof fx - strlen(fx) - 1);
     if (g->crouching) strncat(fx, "Crouching   ", sizeof fx - strlen(fx) - 1);
+    if (g->gills_t > 0) snprintf(fx + strlen(fx), sizeof fx - strlen(fx), "Gills %.0fs   ", ceilf(g->gills_t));
+    if (g->shadow_t > 0) snprintf(fx + strlen(fx), sizeof fx - strlen(fx), "Unseen %.0fs   ", ceilf(g->shadow_t));
+    if (g->toxic > 0.2f) strncat(fx, "Choking   ", sizeof fx - strlen(fx) - 1);
+    if (g->boat_in >= 0) strncat(fx, "Rowing   ", sizeof fx - strlen(fx) - 1);
     if (g->cam.flying) strncat(fx, "Flying   ", sizeof fx - strlen(fx) - 1);
     if (fx[0])
         ui_text_shadow(FONT_SMALL, bx, by - 28, COL_FUN, fx);
 
     /* messages, newest at the bottom */
-    float my = by - 60;
+    float my = by - 90;
     for (int i = 0; i < MAX_MESSAGES; i++) {
         Message *m = &g->messages[i];
         if (!m->text[0] || m->t > 8.0f)
@@ -2273,9 +2843,13 @@ static void draw_hud(Game *g)
     for (int i = 0; i < g->tomb_count; i++)
         tombs += g->tombs[i].opened;
     char prog[128];
-    snprintf(prog, sizeof prog, "Chests %d / %d     Tombs %d / %d     Creatures %d     %s",
-             opened, g->chest_count, tombs, g->tomb_count, g->creatures_left, weather_name(g->weather.type));
+    int relics = 0;
+    for (int i = 0; i < 12; i++)
+        relics += g->quest.relics[i];
+    snprintf(prog, sizeof prog, "Chests %d / %d     Tombs %d / %d     Relics %d / 12     Creatures %d     %s",
+             opened, g->chest_count, tombs, g->tomb_count, relics, g->creatures_left, weather_name(g->weather.type));
     ui_text_shadow(FONT_SMALL, w - 28 - ui_text_width(FONT_SMALL, prog), 20, COL_TEXT, prog);
+    volcano_hud(g);
 
     /* the compass points at the nearest unopened chest or tomb */
     if (held == ITEM_COMPASS) {
@@ -2308,6 +2882,8 @@ static void draw_hud(Game *g)
         ui_text_shadow(FONT_MEDIUM, (w - ui_text_width(FONT_MEDIUM, text)) * 0.5f, 60, COL_GOLD, text);
     }
 
+    fishing_hud(g);
+
     /* inventory */
     if (g->inv_open) {
         float ox, oy;
@@ -2338,12 +2914,40 @@ static void draw_hud(Game *g)
                          (int)it->damage, it->range, it->cooldown);
             else if (it->kind == KIND_SPELL)
                 snprintf(stats, sizeof stats, "Mana %d    Recharge %.1f s", (int)it->mana, it->cooldown);
+            else if (it->kind == KIND_ARMOR)
+                snprintf(stats, sizeof stats, "Armour %d%%    %s", (int)(it->armor * 100.0f + 0.5f),
+                         g->equip[it->slot] == g->slots[show].id ? "Worn (click it in hand to take off)" : "Click it in hand to wear");
+            else if (it->kind == KIND_ROD)
+                snprintf(stats, sizeof stats, "Rod tier %d of 4", it->tier);
             if (stats[0])
                 ui_text(FONT_SMALL, ox + pw - ui_text_width(FONT_SMALL, stats), ty + 6, COL_FUN, stats);
         }
+        /* what you're wearing */
+        static const char *slot_names[EQ_COUNT] = { "Head", "Body", "Back", "Feet" };
+        float ex = ox + pw + 40, ey = oy - 20;
+        ui_text(FONT_SMALL, ex, ey - 30, COL_GOLD, "Wearing");
+        for (int k = 0; k < EQ_COUNT; k++) {
+            float y = ey + k * (INV_CELL + 22);
+            float bg[4] = { 0.06f, 0.05f, 0.04f, 0.7f };
+            ui_rect(ex, y, INV_CELL, INV_CELL, bg);
+            ui_frame(ex, y, INV_CELL, INV_CELL, 1, COL_EDGE);
+            if (g->equip[k] != ITEM_NONE && ITEMS[g->equip[k]].icon)
+                ui_image(ITEMS[g->equip[k]].icon, ex + 4, y + 4, INV_CELL - 8, INV_CELL - 8, NULL, true);
+            float dim2[4] = { 0.95f, 0.9f, 0.8f, 0.6f };
+            ui_text(FONT_SMALL, ex, y + INV_CELL, dim2, slot_names[k]);
+        }
+        char armor[48];
+        snprintf(armor, sizeof armor, "Armour %d%%", (int)(armor_total(g) * 100.0f + 0.5f));
+        ui_text(FONT_SMALL, ex, ey + EQ_COUNT * (INV_CELL + 22), COL_FUN, armor);
         if (g->inv_held >= 0 && ITEMS[g->slots[g->inv_held].id].icon)
             ui_image(ITEMS[g->slots[g->inv_held].id].icon, g->mouse_x - 32, g->mouse_y - 32, 64, 64, NULL, true);
     }
+    if (g->journal_open)
+        journal_draw(g);
+    if (g->shop_npc >= 0)
+        shop_draw(g);
+    if (g->reading_t > 0.0f)
+        reading_draw(g);
 
     if (g->dead) {
         float a = fminf(g->dead_t / 1.5f, 1.0f);
@@ -2355,7 +2959,7 @@ static void draw_hud(Game *g)
     }
 
     /* gas mask: the world through two round lenses */
-    if (g->mask_on && g->cam.mode == CAM_FIRST_PERSON) {
+    if (g->mask_on && g->cam.mode == CAM_FIRST_PERSON && !g->third_person) {
         float edge[4] = { 0, 0, 0, 0.55f };
         ui_rect(0, 0, w, h * 0.06f, edge);
         ui_rect(0, h * 0.94f, w, h * 0.06f, edge);
@@ -2371,21 +2975,28 @@ void game_render_overlay(Game *g)
     particles_draw(&g->ps);
     weather_draw(&g->weather, g->eye);
 
-    if (g->cam.mode == CAM_FIRST_PERSON && !g->dead) {
+    if (g->cam.mode == CAM_FIRST_PERSON && !g->dead && !g->third_person && !g->cam.flying) {
         renderer_begin_viewmodel(&g->r);
         mat4 vp;
         glm_mat4_mul(g->hand_proj, g->view, vp);
         HandInput in = {0};
         ItemId held = g->slots[g->selected].id;
-        in.held = held == ITEM_TORCH || held == ITEM_LANTERN ? ITEM_NONE : held;
+        in.held = held == ITEM_TORCH || held == ITEM_LANTERN || held == ITEM_SHIELD ? ITEM_NONE : held;
         in.left = g->left;
+        in.body_armor = g->equip[EQ_BODY];
+        in.fishing = g->fish.state;
         hands_draw(&g->hands, &in, g->model_prog, vp);
     }
 
+    float surface, depth;
+    bool under = sea_at(g, g->eye[0], g->eye[2], &surface, &depth) && g->eye[1] < surface - 0.02f;
     PostEffects fx = {
         .damage = g->hurt_t / 0.45f,
         .slowmo = fminf(g->slow_t, 1.0f),
         .dead = g->dead ? fminf(g->dead_t / 2.0f, 1.0f) : 0.0f,
+        .underwater = under ? 1.0f : 0.0f,
+        .ash = g->volcano.ash,
+        .toxic = g->toxic,
     };
     renderer_finish(&g->r, &fx);
 
