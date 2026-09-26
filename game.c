@@ -1299,7 +1299,12 @@ static void update_prompt(Game *g)
         snprintf(g->prompt, sizeof g->prompt, "%s Step out of the boat", key);
         return;
     }
-    switch (find_target(g, &i)) {
+    TargetKind target = find_target(g, &i);
+    if (target == TGT_NONE && boat_near(g, 4.5f) >= 0 && !g->swimming) {
+        snprintf(g->prompt, sizeof g->prompt, "%s Climb down into the rowing boat", key);
+        return;
+    }
+    switch (target) {
     case TGT_DOOR: {
         Door *d = &g->doors[i];
         if (d->locked) {
@@ -1378,8 +1383,13 @@ void game_interact(Game *g)
     }
     int i;
     TargetKind t = find_target(g, &i);
-    if (t == TGT_NONE)
+    if (t == TGT_NONE) {
+        /* a boat alongside the pier, or right beside you in the water */
+        int b = boat_near(g, g->swimming ? 3.0f : 4.5f);
+        if (b >= 0)
+            boat_board(g, b);
         return;
+    }
     g->reach_t = 0.001f;        /* left hand reaches out */
 
     if (t == TGT_DOOR) {
@@ -2687,7 +2697,7 @@ static void draw_hud(Game *g)
     /* title card */
     if (g->title_t < 8.0f) {
         float a = fminf(g->title_t / 1.0f, 1.0f) * fminf((8.0f - g->title_t) / 2.0f, 1.0f);
-        const char *title = "The Ruins of Bsg";
+        const char *title = "The Ruins of Bezan";
         const char *sub = "Explore the halls. Wake the tombs. Visit the king. Then find the sea.";
         faded(COL_GOLD, a, col);
         ui_text_shadow(FONT_LARGE, (w - ui_text_width(FONT_LARGE, title)) * 0.5f, h * 0.22f, col, title);

@@ -140,7 +140,11 @@ void weather_snap(Weather *w)
     w->hail = t->hail;
     w->wet = t->rain > 0.05f ? 1.0f : 0.0f;
     if (w->type == WEATHER_TORNADO) {
+        /* for test shots: a full-grown twister north of the altar */
+        w->twister = true;
         w->twister_power = 1.0f;
+        glm_vec3_copy((vec3){0.0f, FLOOR_Y, -70.0f}, w->twister_pos);
+        glm_vec3_copy((vec3){1.0f, 0.0f, 0.5f}, w->twister_vel);
     }
 }
 

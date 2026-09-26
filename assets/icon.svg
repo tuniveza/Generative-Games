@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- The Ruins of Bezan: a ruined arch at dusk, Old Ember smouldering
+       behind it, the chalky turquoise sea in front, rain, and a lantern's warm glow -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f2a4a"/>
+      <stop offset="0.55" stop-color="#6b5b7b"/>
+      <stop offset="0.8" stop-color="#e59a6a"/>
+      <stop offset="1" stop-color="#f4c98a"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8fe3dc"/>
+      <stop offset="0.5" stop-color="#3fb8b4"/>
+      <stop offset="1" stop-color="#157b86"/>
+    </linearGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8a6b58"/>
+      <stop offset="1" stop-color="#3f2f2a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffd27a" stop-opacity="0.95"/>
+      <stop offset="0.35" stop-color="#ff9a3a" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ff7a1a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ember" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffb347"/>
+      <stop offset="1" stop-color="#ff3d00" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="round"><rect width="512" height="512" rx="104"/></clipPath>
+  </defs>
+  <g clip-path="url(#round)">
+    <rect width="512" height="512" fill="url(#sky)"/>
+    <!-- a few early stars -->
+    <g fill="#fff" opacity="0.8">
+      <circle cx="80" cy="70" r="2"/><circle cx="150" cy="40" r="1.5"/><circle cx="420" cy="60" r="2"/>
+      <circle cx="350" cy="30" r="1.5"/><circle cx="470" cy="120" r="1.5"/>
+    </g>
+    <!-- Old Ember: smoke, the cone, lava running down -->
+    <path d="M360 96 C330 70 350 40 385 52 C400 20 450 30 440 64 C470 70 468 104 440 110 Z" fill="#4a3f48" opacity="0.8"/>
+    <path d="M250 330 L372 150 Q390 132 408 150 L512 300 L512 330 Z" fill="#2a1f24"/>
+    <circle cx="390" cy="146" r="30" fill="url(#ember)" opacity="0.9"/>
+    <path d="M388 150 Q396 200 380 240 Q372 270 384 300" stroke="#ff7a1a" stroke-width="5" fill="none" opacity="0.9"/>
+    <path d="M396 152 Q420 205 432 250" stroke="#ffb347" stroke-width="3" fill="none" opacity="0.8"/>
+    <!-- the sea -->
+    <rect y="330" width="512" height="182" fill="url(#sea)"/>
+    <path d="M0 360 Q40 350 80 360 T160 360 T240 360 T320 360 T400 360 T480 360 T560 360" stroke="#e8fbf8" stroke-width="5" fill="none" opacity="0.8"/>
+    <path d="M0 410 Q50 398 100 410 T200 410 T300 410 T400 410 T500 410 T600 410" stroke="#d6f6f2" stroke-width="4" fill="none" opacity="0.6"/>
+    <path d="M0 462 Q60 450 120 462 T240 462 T360 462 T480 462 T600 462" stroke="#c4efe9" stroke-width="3" fill="none" opacity="0.45"/>
+    <!-- the ruined arch -->
+    <path d="M58 360 L58 196 Q58 120 140 104 L140 150 Q104 160 104 200 L104 360 Z" fill="url(#stone)"/>
+    <path d="M232 360 L232 206 Q230 168 196 152 L204 112 Q276 130 278 200 L278 360 Z" fill="url(#stone)"/>
+    <path d="M140 104 L168 100 L172 126 L150 132 Z" fill="#6d5446"/>
+    <rect x="46" y="350" width="70" height="18" rx="3" fill="#5a443a"/>
+    <rect x="222" y="350" width="68" height="18" rx="3" fill="#5a443a"/>
+    <!-- a tumbled stone and the lantern's glow in the doorway -->
+    <circle cx="168" cy="300" r="70" fill="url(#glow)"/>
+    <rect x="156" y="282" width="24" height="32" rx="6" fill="#ffcf73" stroke="#5b3a1a" stroke-width="4"/>
+    <path d="M160 282 Q168 266 176 282" stroke="#5b3a1a" stroke-width="4" fill="none"/>
+    <path d="M300 358 L330 340 L352 352 L346 368 Z" fill="#4b3a32"/>
+    <!-- rain -->
+    <g stroke="#dfe8ff" stroke-width="2" opacity="0.35">
+      <line x1="30" y1="140" x2="22" y2="170"/><line x1="200" y1="60" x2="192" y2="90"/>
+      <line x1="300" y1="100" x2="292" y2="130"/><line x1="120" y1="230" x2="112" y2="260"/>
+      <line x1="460" y1="200" x2="452" y2="230"/><line x1="330" y1="230" x2="322" y2="260"/>
+    </g>
+  </g>
+</svg>

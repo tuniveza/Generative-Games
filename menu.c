@@ -100,7 +100,7 @@ static int items_for(Game *g, MenuItem *out)
 
 static void panel_rect(Game *g, int count, float *x, float *y, float *h)
 {
-    *h = g->menu == MENU_CONTROLS ? 560.0f : 120.0f + count * ROW_H;
+    *h = g->menu == MENU_CONTROLS ? 640.0f : 120.0f + count * ROW_H;
     *x = (g->width - (g->menu == MENU_CONTROLS ? 980.0f : PANEL_W)) * 0.5f;
     *y = (g->height - *h) * 0.5f;
 }
@@ -282,12 +282,14 @@ void menu_draw(Game *g)
 
     if (g->menu == MENU_CONTROLS) {
         static const char *keys[][2] = {
-            { "WASD", "move" }, { "Shift", "sprint" }, { "Space", "jump" }, { "C / Ctrl", "crouch (quieter)" },
-            { "Mouse", "look" }, { "Left click", "attack / cast / use" }, { "Right click", "block / zoom" },
-            { "E", "open, take, light, talk" }, { "T", "light in your off hand" }, { "G", "drop the held item" },
-            { "1-9 / wheel", "choose item" }, { "Tab / I", "satchel" }, { "V", "third-person view" },
+            { "WASD", "move / swim / row" }, { "Shift", "sprint" }, { "Space", "jump / swim up / climb out" },
+            { "C / Ctrl", "crouch / dive" }, { "Mouse", "look" }, { "Left click", "attack / cast / use / fish" },
+            { "Right click", "block / zoom / throw harpoon" }, { "E", "open, take, talk, board a boat" },
+            { "T", "off hand: torch, lantern, shield" }, { "G", "drop the held item" },
+            { "1-9 / wheel", "choose item" }, { "Tab / I", "satchel (and what you wear)" }, { "J", "journal" },
+            { "V", "see yourself (third person)" }, { "- / =", "camera distance" }, { "F10", "free orbit camera" },
             { "N", "day / night" }, { "F2", "change the weather" }, { "M", "music on / off" },
-            { "H", "these controls" }, { "F12", "screenshot" }, { "Esc", "pause" },
+            { "F12", "screenshot" }, { "Esc", "pause" },
         };
         static const char *pad[][2] = {
             { "Left stick", "move (click: sprint)" }, { "Right stick", "look" }, { "A", "jump" },
@@ -296,7 +298,7 @@ void menu_draw(Game *g)
             { "D-pad up", "off-hand light" }, { "D-pad down", "drop item" }, { "Start", "pause" },
         };
         float y = py + 90;
-        for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++, y += 24) {
+        for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++, y += 23) {
             ui_text(FONT_SMALL, px + 40, y, COL_GOLD, keys[i][0]);
             ui_text(FONT_SMALL, px + 190, y, COL_TEXT, keys[i][1]);
         }

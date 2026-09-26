@@ -138,9 +138,9 @@ static void build_slime(Model *core, Model *body)
     glm_scale(xf, (vec3){1.0f, 0.9f, 1.0f});
     mb_capsule(&jelly, xf, 0.5f, 0.0f, 40);
     Material jm;
-    material_color(&jm, 0.22f, 0.85f, 0.32f, 0.05f, 0.0f);
+    material_color(&jm, 0.2f, 0.8f, 0.3f, 0.05f, 0.0f);
     jm.base_color[3] = 1.0f;
-    glm_vec3_copy((vec3){0.08f, 0.45f, 0.12f}, jm.emissive);
+    glm_vec3_copy((vec3){0.02f, 0.14f, 0.04f}, jm.emissive);
     model_from_builders(body, &jelly, &jm, 1);
     mb_free(&jelly);
 }

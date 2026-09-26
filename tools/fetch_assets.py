@@ -66,7 +66,7 @@ ROOT = os.path.dirname(HERE)
 SOURCES = os.path.join(ROOT, "assets", "SOURCES.txt")
 
 
-HEADERS = {"User-Agent": "bsg-fetch-assets/1.0 (+https://polyhaven.com)"}
+HEADERS = {"User-Agent": "bezan-fetch-assets/1.0 (+https://polyhaven.com)"}
 
 
 def get_json(url):

@@ -518,7 +518,7 @@ void hands_draw(Hands *h, const HandInput *in, GLuint prog, mat4 view_proj)
     if (in->held != ITEM_NONE && ITEMS[in->held].loaded && ITEMS[in->held].kind != KIND_SPELL &&
         !(in->held == ITEM_GAS_MASK && in->mask_on)) {
         const ItemDef *it = &ITEMS[in->held];
-        bool weapon = it->kind == KIND_WEAPON || it->kind == KIND_THROWN || in->held == ITEM_TORCH;
+        bool weapon = it->kind == KIND_WEAPON || it->kind == KIND_THROWN || it->kind == KIND_ROD || in->held == ITEM_TORCH;
         mat4 grip, xf;
         grip_matrix(in->held, weapon, grip);
         glm_mat4_mul(h->world[0], h->pose[0].world[B_PALM], xf);

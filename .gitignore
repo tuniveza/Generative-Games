@@ -6,3 +6,4 @@ settings.cfg
 screenshot-*.png
 # half-finished downloads from tools/fetch_assets.py
 *.part
+build-asan/

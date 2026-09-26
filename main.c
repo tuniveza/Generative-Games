@@ -8,6 +8,7 @@
 #include "game.h"
 #include "shader.h"
 
+#include <stb_image.h>
 #include <stb_image_write.h>
 #include <string.h>
 
@@ -37,6 +38,7 @@ typedef struct {
     float cam[5];           /* x y z yaw pitch (degrees) */
     bool fly, third;        /* hover where --cam puts you; see yourself from behind */
     bool block;             /* hold the right mouse button (shield up) */
+    bool journal;
     int weather;            /* -1 = as it comes */
     float volcano;          /* seconds into Old Ember's cycle, < 0 = from the start */
     int wear[4];            /* item ids to put on */
@@ -67,6 +69,7 @@ static void parse_options(Options *o, int argc, char **argv)
         else if (!strcmp(argv[i], "--fly")) o->fly = true;
         else if (!strcmp(argv[i], "--third")) o->third = true;
         else if (!strcmp(argv[i], "--block")) o->block = true;
+        else if (!strcmp(argv[i], "--journal")) o->journal = true;
         else if (!strcmp(argv[i], "--face")) avatar_test_turn = 3.14159f;
         else if (!strcmp(argv[i], "--weather") && i + 1 < argc) o->weather = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--volcano") && i + 1 < argc) o->volcano = (float)atof(argv[++i]);
@@ -119,6 +122,7 @@ static void apply_options(Game *game, const Options *o)
     if (o->fly)
         game->cam.flying = true;
     game->rmb = o->block;
+    game->journal_open = o->journal;
     game->third_person = o->third;
     if (o->weather >= 0 && o->weather < WEATHER_COUNT) {
         weather_set(&game->weather, (WeatherType)o->weather);
@@ -159,12 +163,26 @@ int main(int argc, char **argv)
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
-    SDL_Window *win = SDL_CreateWindow("The Ruins of Bsg", WIN_W, WIN_H,
+    SDL_Window *win = SDL_CreateWindow("The Ruins of Bezan", WIN_W, WIN_H,
                                        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
                                        (opt.shot ? SDL_WINDOW_HIDDEN : 0));
     if (!win) {
         fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
         return 1;
+    }
+
+    /* the window's icon: a ruined arch, a lantern, the volcano and the sea */
+    {
+        int iw, ih, n;
+        unsigned char *px = stbi_load("assets/icon-64.png", &iw, &ih, &n, 4);
+        if (px) {
+            SDL_Surface *icon = SDL_CreateSurfaceFrom(iw, ih, SDL_PIXELFORMAT_RGBA32, px, iw * 4);
+            if (icon) {
+                SDL_SetWindowIcon(win, icon);
+                SDL_DestroySurface(icon);
+            }
+            stbi_image_free(px);
+        }
     }
 
     SDL_GLContext ctx = SDL_GL_CreateContext(win);

@@ -1098,7 +1098,7 @@ static int sell_price(ItemId id)
 }
 
 #define SHOP_W 980.0f
-#define SHOP_H 640.0f
+#define SHOP_H 680.0f
 #define ROW 50.0f
 
 static void shop_rect(Game *g, float *x, float *y)
@@ -1115,16 +1115,23 @@ void shop_open(Game *g, Npc *n)
     audio_play(SFX_SHOP_BELL, 0.8f);
 }
 
+/* row spacing, so the whole stock fits the panel */
+static float row_step(int count)
+{
+    return fminf(ROW * 0.72f, (SHOP_H - 190.0f) / (float)(count > 0 ? count : 1));
+}
+
 /* which row the mouse is over: buy rows are 0.., sell rows 100.. */
 static int shop_hover(Game *g, ItemId *stock, int n, int *sell_slot)
 {
     (void)stock;
+    float step = row_step(n);
     float x, y;
     shop_rect(g, &x, &y);
     float mx = g->mouse_x, my = g->mouse_y;
     for (int i = 0; i < n; i++) {
-        float ry = y + 90 + i * ROW * 0.72f;
-        if (mx > x + 20 && mx < x + SHOP_W * 0.55f && my > ry && my < ry + ROW * 0.7f)
+        float ry = y + 90 + i * step;
+        if (mx > x + 20 && mx < x + SHOP_W * 0.55f && my > ry && my < ry + step)
             return i;
     }
     int row = 0;
@@ -1203,22 +1210,23 @@ void shop_draw(Game *g)
     int count = stock_for(n->kind, stock);
     int sell_slot = -1;
     int hover = shop_hover(g, stock, count, &sell_slot);
+    float step = row_step(count);
     for (int i = 0; i < count; i++) {
         ItemId id = stock[i];
-        float ry = y + 90 + i * ROW * 0.72f;
+        float ry = y + 90 + i * step;
         if (hover == i) {
             float hl[4] = { 0.3f, 0.22f, 0.1f, 0.6f };
-            ui_rect(x + 20, ry, SHOP_W * 0.55f - 20, ROW * 0.7f, hl);
+            ui_rect(x + 20, ry, SHOP_W * 0.55f - 20, step - 2, hl);
         }
         if (ITEMS[id].icon)
-            ui_image(ITEMS[id].icon, x + 24, ry, ROW * 0.7f, ROW * 0.7f, NULL, true);
+            ui_image(ITEMS[id].icon, x + 24, ry, step - 2, step - 2, NULL, true);
         int price = ITEMS[id].price * (ITEMS[id].kind == KIND_BAIT ? 5 : 1);
         char name[80];
         snprintf(name, sizeof name, "%s%s", ITEMS[id].name, ITEMS[id].kind == KIND_BAIT ? " (5)" : "");
-        ui_text(FONT_SMALL, x + 70, ry + 4, shell_total(g) >= price ? COL_TEXT : COL_RED, name);
+        ui_text(FONT_SMALL, x + 70, ry + step * 0.5f - 12, shell_total(g) >= price ? COL_TEXT : COL_RED, name);
         char p[16];
         snprintf(p, sizeof p, "%d", price);
-        ui_text(FONT_SMALL, x + SHOP_W * 0.55f - 10 - ui_text_width(FONT_SMALL, p), ry + 4, COL_GOLD, p);
+        ui_text(FONT_SMALL, x + SHOP_W * 0.55f - 10 - ui_text_width(FONT_SMALL, p), ry + step * 0.5f - 12, COL_GOLD, p);
     }
     int row = 0;
     for (int s = 0; s < INV_SLOTS; s++) {

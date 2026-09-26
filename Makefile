@@ -7,7 +7,7 @@ SRCS    := main.c game.c creatures.c beasts.c magic.c npc.c menu.c weather.c aud
            world.c coast.c village.c volcano.c undersea.c ocean.c player.c animals.c quest.c fishing.c shapes.c \
            model.c texture.c shader.c camera.c terrain.c deps/glad/src/gl.c deps/impl.c
 OBJS    := $(SRCS:%.c=$(BUILD)/%.o)
-TARGET  := $(BUILD)/bsg
+TARGET  := $(BUILD)/bezan
 
 .PHONY: all run clean
 
