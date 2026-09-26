@@ -1,7 +1,9 @@
-<p align="center"><img src="assets/icon.png" width="160" alt="The Ruins of Bezan icon: a ruined arch with a lantern, a smouldering volcano and a turquoise sea"></p>
+<p align="center"><img src="assets/icon.png" width="140" alt="The Ruins of Bezan icon: a ruined arch with a lantern, a smouldering volcano and a turquoise sea"></p>
 
 <h1 align="center">The Ruins of Bezan</h1>
-<p align="center">A rain-soaked 3D exploration game in C and OpenGL 4.5,<br>made entirely by conversation with Claude, one prompt at a time.</p>
+<p align="center"><i>A rain-soaked 3D exploration game in C and OpenGL 4.5.</i></p>
+
+<p align="center">Made entirely by conversation with Claude, one prompt at a time.</p>
 
 <p align="center">
 <img src="docs/screenshots/village_night.jpg" width="49%"> <img src="docs/screenshots/beach.jpg" width="49%">
@@ -10,43 +12,19 @@
 
 ## What it is
 
-You wake by a shrine among broken pillars in the rain. The ruins have halls, a library, a flooded hall full of
-slimes, a crypt of sleeping skeletons with spell tombs, and a palace whose residents talk (with real voices). Beyond
-the ruins lies the coast:
+You wake by a shrine among broken pillars in the rain. The ruins have halls, a library, a flooded hall full of slimes, a crypt of sleeping skeletons with spell tombs, and a palace whose residents talk (with real voices). Beyond the ruins lies the coast:
 
-- **The beach** — pale sand into chalky turquoise water, palms, parasols, surf breaking on the shore, the walrus
-  rocks (the walruses whistle to each other across the water, answer each other in a chorus, whistle along to your
-  ukulele, and whistle for fish), hermit crabs, gulls, turtles, fish shoals, dolphins… and jellyfish and sharks.
-- **The Curious Clam**, a beach shop that takes **shells** as money — white, pink, blue and gold, found on the sand,
-  earned from odd jobs on the notice board, or paid for fish — and sells rods, bait, novelties (a garden gnome that
-  distracts monsters, a ukulele, a metal detector for buried treasure, a magnifying glass, a lucky elephant) and treats.
-- **The promenade** — lamps, benches, bunting, bronze sea creatures on plinths, stone tablets carrying the coast's
-  history, and **the Hall of Tides**, a museum whose twelve pedestals fill up as you find the relics of the First Tide.
-- **The marina** — a stone quay, piers with **rowing boats** you can take out to sea, a moored ship, the
-  harbourmaster's office, a fish market, and the breakwater out to the lighthouse, where on clear nights
-  **the Unmoored**, someone older than the sea, waits — and can hardly be seen.
-- **Brinewick**, a fishing village of pastel plaster and thatch on a low hill: paper lanterns criss-crossing the square
-  under a great blossom tree, shell-mosaic lanes, wind chimes, washing on the line, a tavern with its own reel,
-  a smith, a bell tower with no bell, a lantern shrine on the cliff, and a cove below.
-- **Old Ember**, a volcano that **erupts every 30 minutes**: two minutes of tremors and warnings, then lava bombs and a
-  burning cloud that rolls across the whole coast killing everything out in the open (you included), an ash fall, and
-  then the Covenant brings everything back to life. Its crater's fumes are poison — **this is what the gas mask is
-  for** (the ash, too).
-- **The Drowned Court**, a palace on the sea floor under a glass dome, reachable only by blowing the **Conch of the
-  Deep** — a catch from the fishing mini-game — at the bell buoy far out at sea. Three puzzles (a bell gallery, a tide
-  engine, a pearl garden), barnacled Drowned guards, angler eels, and the Drowned King, who keeps Brinewick's bell.
+- **The beach** — pale sand into chalky turquoise water, palms, parasols, surf breaking on the shore, the walrus rocks (the walruses whistle to each other across the water, answer each other in a chorus, whistle along to your ukulele, and whistle for fish), hermit crabs, gulls, turtles, fish shoals, dolphins… and jellyfish and sharks.
+- **The Curious Clam**, a beach shop that takes **shells** as money — white, pink, blue and gold, found on the sand, earned from odd jobs on the notice board, or paid for fish — and sells rods, bait, novelties (a garden gnome that distracts monsters, a ukulele, a metal detector for buried treasure, a magnifying glass, a lucky elephant) and treats.
+- **The promenade** — lamps, benches, bunting, bronze sea creatures on plinths, stone tablets carrying the coast's history, and **the Hall of Tides**, a museum whose twelve pedestals fill up as you find the relics of the First Tide.
+- **The marina** — a stone quay, piers with **rowing boats** you can take out to sea, a moored ship, the harbourmaster's office, a fish market, and the breakwater out to the lighthouse, where on clear nights **the Unmoored**, someone older than the sea, waits — and can hardly be seen.
+- **Brinewick**, a fishing village of pastel plaster and thatch on a low hill: paper lanterns criss-crossing the square under a great blossom tree, shell-mosaic lanes, wind chimes, washing on the line, a tavern with its own reel, a smith, a bell tower with no bell, a lantern shrine on the cliff, and a cove below.
+- **Old Ember**, a volcano that **erupts every 30 minutes**: two minutes of tremors and warnings, then lava bombs and a burning cloud that rolls across the whole coast killing everything out in the open (you included), an ash fall, and then the Covenant brings everything back to life. Its crater's fumes are poison — **this is what the gas mask is for** (the ash, too).
+- **The Drowned Court**, a palace on the sea floor under a glass dome, reachable only by blowing the **Conch of the Deep** — a catch from the fishing mini-game — at the bell buoy far out at sea. Three puzzles (a bell gallery, a tide engine, a pearl garden), barnacled Drowned guards, angler eels, and the Drowned King, who keeps Brinewick's bell.
 
-**The Ember and the Tide** ties it together: relight the shrine lanterns, find the harbourmaster's lost tide charts,
-learn to fish, fetch Old Ember's heart for the smith's ember lures, hook the Conch, open the Court, and bring the bell
-home to a festival. Side quests: the twelve relics (and the Unmoored's very rare gift), the walrus chorus, Old Brine's
-golden snapper, and the notice board's jobs. Press **J** for the journal.
+**The Ember and the Tide** ties it together: relight the shrine lanterns, find the harbourmaster's lost tide charts, learn to fish, fetch Old Ember's heart for the smith's ember lures, hook the Conch, open the Court, and bring the bell home to a festival. Side quests: the twelve relics (and the Unmoored's very rare gift), the walrus chorus, Old Brine's golden snapper, and the notice board's jobs. Press **J** for the journal.
 
-Also new in this version: **swimming** (with stamina and breath, diving, climbing out onto piers; lengthened by the
-Tome of Gills, the diving helm, and rare catches; boats never tire you), **fishing** with four rod tiers and four
-baits, **third-person view** (V) with **visible armour and clothes** (the knight's plate and helm, the barbarian's furs,
-the magister's robes and hats, capes, a fisherman's hat, a brass diving helmet), eleven new weapons, seven new spells,
-nine new kinds of creature, wind storms, hail and tornadoes, eleven new music moods in new genres and around seventy
-new sound effects — all synthesized in code.
+Also new in this version: **swimming** (with stamina and breath, diving, climbing out onto piers; lengthened by the Tome of Gills, the diving helm, and rare catches; boats never tire you), **fishing** with four rod tiers and four baits, **third-person view** (V) with **visible armour and clothes** (the knight's plate and helm, the barbarian's furs, the magister's robes and hats, capes, a fisherman's hat, a brass diving helmet), eleven new weapons, seven new spells, nine new kinds of creature, wind storms, hail and tornadoes, eleven new music moods in new genres and around seventy new sound effects — all synthesized in code.
 
 <p align="center">
 <img src="docs/screenshots/armour.jpg" width="32%"> <img src="docs/screenshots/volcano.jpg" width="32%"> <img src="docs/screenshots/tornado.jpg" width="32%">
@@ -55,8 +33,7 @@ new sound effects — all synthesized in code.
 
 ## Building and running
 
-Needs a C17 compiler, `make`, `pkg-config` and [SDL3](https://libsdl.org), and a GPU with OpenGL 4.5.
-Everything else (glad, cglm, cgltf, stb) is in `deps/`.
+Needs a C17 compiler, `make`, `pkg-config` and [SDL3](https://libsdl.org), and a GPU with OpenGL 4.5. Everything else (glad, cglm, cgltf, stb) is in `deps/`.
 
 ```sh
 # Arch / CachyOS:  sudo pacman -S sdl3 gcc make pkgconf
@@ -87,18 +64,11 @@ A gamepad works too (see the controls screen, H).
 
 ## How it's made
 
-Everything is plain C (about 20,000 lines) on top of SDL3 and OpenGL 4.5: a glTF loader with skinning and
-animation, a PBR renderer with sun shadows, bloom and ACES tone mapping, rain puddles and ripples, and — new —
-a heightmap-shaped world, an ocean with swell, surf and caustics, underwater fog and a Snell's window, lava, a
-tornado and a glossy slime shader. All the architecture (ruins, village, marina, the Court), the hands, slimes,
-walruses, fish, sharks, boats, rods, bells and many props are generated in code. All music and sound effects are
-synthesized live (`audio.c`); only the characters' voices are recordings, rendered offline with Piper
-(`tools/make_voices.sh`). `tools/fetch_assets.py` downloads the Poly Haven assets the coast uses.
+Everything is plain C (about 20,000 lines) on top of SDL3 and OpenGL 4.5: a glTF loader with skinning and animation, a PBR renderer with sun shadows, bloom and ACES tone mapping, rain puddles and ripples, and — new — a heightmap-shaped world, an ocean with swell, surf and caustics, underwater fog and a Snell's window, lava, a tornado and a glossy slime shader. All the architecture (ruins, village, marina, the Court), the hands, slimes, walruses, fish, sharks, boats, rods, bells and many props are generated in code. All music and sound effects are synthesized live (`audio.c`); only the characters' voices are recordings, rendered offline with Piper (`tools/make_voices.sh`). `tools/fetch_assets.py` downloads the Poly Haven assets the coast uses.
 
 ## Asset sources
 
-Full credits and licenses are in [CREDITS.md](CREDITS.md); every download URL used by `tools/fetch_assets.py` is
-listed in [assets/SOURCES.txt](assets/SOURCES.txt).
+Full credits and licenses are in [CREDITS.md](CREDITS.md); every download URL used by `tools/fetch_assets.py` is listed in [assets/SOURCES.txt](assets/SOURCES.txt).
 
 **Characters**
 - KayKit Character Pack: Adventurers and Skeletons, by Kay Lousberg (CC0) — <https://kaylousberg.itch.io/kaykit-adventurers>, <https://kaylousberg.itch.io/kaykit-skeletons>
@@ -156,8 +126,7 @@ listed in [assets/SOURCES.txt](assets/SOURCES.txt).
 **Voices** — [Piper](https://github.com/rhasspy/piper) text-to-speech with voices from <https://huggingface.co/rhasspy/piper-voices>:
 `en_GB-cori-high` (public-domain LibriVox data) and `en_GB-vctk-medium` (the CSTR VCTK Corpus, University of Edinburgh, CC BY 4.0).
 
-**Libraries** — [SDL3](https://libsdl.org) (zlib), [glad](https://github.com/Dav1dde/glad), [cglm](https://github.com/recp/cglm) (MIT),
-[cgltf](https://github.com/jkuhlmann/cgltf) (MIT), [stb](https://github.com/nothings/stb) (public domain / MIT).
+**Libraries** — [SDL3](https://libsdl.org) (zlib), [glad](https://github.com/Dav1dde/glad), [cglm](https://github.com/recp/cglm) (MIT), [cgltf](https://github.com/jkuhlmann/cgltf) (MIT), [stb](https://github.com/nothings/stb) (public domain / MIT).
 
 ---
 
@@ -284,19 +253,9 @@ Every request made to Claude while building this game, in order, word for word (
 
 Parts of the code were written or changed by hand rather than by Claude, and are kept as they are:
 
-- **`main.c` — the triangle.** The original first-lesson triangle still spins in the world at the altar, on purpose
-  ("go ahead aslong as it's not that dead code of that triangle; I want it there"). Its loop code is hand-edited: the
-  ping-pong `x`/`dir`/`speed`/`limit` variables before the loop (`x += dir * speed`, bouncing at ±10), translating by
-  `(x, x, 0)` and scaling by `(8, 8, 1)` after `glm_rotate_make(model, t, (1, 1, 1))`, the colour uniform set to
-  `0.0f + 0.0f * sinf(t)` (so the shader's gradient shows), and the comments
-  `//THIS IS MOVING THE CAMERA; THE TRIANGLE HASN'T MOVED.` and `// before the while loop`, with the original
-  indentation.
-- **`shaders/basic.vert` / `shaders/basic.frag` — the triangle's gradient.** A per-vertex `v_gradientFactor`
-  (`a_pos.x + 0.5`, with options B and C left in comments) and a red-to-green `mix`, plus the unused `u_resolution`
-  and orange/blue constants.
-- **`level.c` — `pillar()`.** `static float change = 1.0f;` and a `glm_rotate(xf, change, (1, 0, 0))` that tips every
-  pillar's capital by one radian (the tilted capitals you see around the shrine), with a stray `;` and blank lines;
-  and the comment `//height of walls` in `wall_height()`.
+- **`main.c` — the triangle.** The original first-lesson triangle still spins in the world at the altar, on purpose ("go ahead aslong as it's not that dead code of that triangle; I want it there"). Its loop code is hand-edited: the ping-pong `x`/`dir`/`speed`/`limit` variables before the loop (`x += dir * speed`, bouncing at ±10), translating by `(x, x, 0)` and scaling by `(8, 8, 1)` after `glm_rotate_make(model, t, (1, 1, 1))`, the colour uniform set to `0.0f + 0.0f * sinf(t)` (so the shader's gradient shows), and the comments `//THIS IS MOVING THE CAMERA; THE TRIANGLE HASN'T MOVED.` and `// before the while loop`, with the original indentation.
+- **`shaders/basic.vert` / `shaders/basic.frag` — the triangle's gradient.** A per-vertex `v_gradientFactor` (`a_pos.x + 0.5`, with options B and C left in comments) and a red-to-green `mix`, plus the unused `u_resolution` and orange/blue constants.
+- **`level.c` — `pillar()`.** `static float change = 1.0f;` and a `glm_rotate(xf, change, (1, 0, 0))` that tips every pillar's capital by one radian (the tilted capitals you see around the shrine), with a stray `;` and blank lines; and the comment `//height of walls` in `wall_height()`.
 - **`settings.cfg`** is written by the game's options menu and isn't part of the repository.
 
 </sub>
