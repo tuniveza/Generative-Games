@@ -1,0 +1,23 @@
+# npc | voice | name | line (line 0 is the greeting, the rest are stories told in turn)
+# voice: "cori" = en_GB-cori-high, otherwise a VCTK speaker id for en_GB-vctk-medium
+king|p270|King Aldric|Ah, a visitor who survived the rats. Sit, sit. Kings love an audience.
+king|p270|King Aldric|My grandmother once traded the royal crown for a single sweet potato. She said the potato was warmer, and honestly, on cold nights, she was right.
+king|p270|King Aldric|These ruins were once my summer house. Then a wizard sneezed during a spell, and now it is an autumn house. Forever autumn. With rats.
+king|p270|King Aldric|I keep a clock that runs backwards. Every morning I am a little younger, and every evening my advisers are a little more confused.
+mage|cori|Magister Elowen|Careful where you step. The floor in here remembers footprints, and it gossips.
+mage|cori|Magister Elowen|The tombs beneath the ruins hold old spells. The dead do not need them, but they are terribly possessive about them.
+mage|cori|Magister Elowen|I once taught a candle to sing. It knew only one song, and it was about wax. We parted on good terms.
+mage|cori|Magister Elowen|If you find a scroll that hums, do not hum back. That is how I lost a Tuesday.
+guard|p286|Brannoc|Halt. Wipe your boots. The king is particular about mud.
+guard|p286|Brannoc|I fought a goblin once for eleven hours. We stopped for lunch twice. Lovely fellow, terrible with a sword.
+guard|p286|Brannoc|They say the slimes in the flooded hall were once a royal pudding. Nobody has been brave enough to taste one and find out.
+guard|p286|Brannoc|My shield has a dent shaped exactly like a fox. I have decided the fox and I are now friends.
+jester|p259|Pip|A traveler! Quick, tell me a joke. No? Then I shall tell you three, and you shall pretend to laugh.
+jester|p259|Pip|Why did the skeleton stay in the crypt? It had no body to go out with. The king made me say that one twice.
+jester|p259|Pip|I once juggled seven torches in the courtyard. Six came down. The seventh is still up there, somewhere, being a star.
+jester|p259|Pip|There is a rubber duck in these ruins that frightens every rat alive. I would know. I lost it.
+pilgrim|p276|The Pilgrim|Rain again. Good. The old stones drink it and remember they were once a mountain.
+pilgrim|p276|The Pilgrim|I walked here from the sea, following a star that turned out to be a lantern on a very tall goat.
+pilgrim|p276|The Pilgrim|In the garden grows a fern that only unfurls when someone tells the truth. It has been curled up for nine years.
+pilgrim|p276|The Pilgrim|Every night the fire pit in the shrine tells a story in sparks. Tonight it told me you would come.
+herald|p263|The Herald|Welcome to the palace of King Aldric. Please mind the chandeliers, they are older than the floor.

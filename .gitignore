@@ -1,0 +1,8 @@
+# build output
+build/
+# per-player settings, written by the game
+settings.cfg
+# F12 screenshots
+screenshot-*.png
+# half-finished downloads from tools/fetch_assets.py
+*.part
